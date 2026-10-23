@@ -82,6 +82,7 @@ import type {
   UserQuestionReply,
 } from "../model/userQuestion";
 import { isImeComposition } from "../../../shared/lib/keyboard";
+import { handleLineBoundaryKey } from "../../../shared/lib/lineBoundaryKeys";
 import {
   captureDraft,
   dropPastedText,
@@ -1562,6 +1563,10 @@ export function Composer({
     if (disabled) return;
     if (isImeComposition(e.nativeEvent)) return;
     if (creatingSkill) return;
+    if (handleLineBoundaryKey(e.nativeEvent, e.currentTarget)) {
+      e.preventDefault();
+      return;
+    }
     if (
       e.key === "Enter" &&
       !e.shiftKey &&

@@ -17,6 +17,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { handleLineBoundaryKey } from "../../../shared/lib/lineBoundaryKeys";
 import { prettyParent, projectName } from "../../../shared/lib/paths";
 import {
   ChevronDown,
@@ -399,6 +400,10 @@ export function QuickComposer({ onShown }: { onShown: () => void }) {
 
   const onPromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
+    if (handleLineBoundaryKey(event.nativeEvent, event.currentTarget)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       if (picker) closePicker();

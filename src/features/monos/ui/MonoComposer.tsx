@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { isImeComposition } from "../../../shared/lib/keyboard";
+import { handleLineBoundaryKey } from "../../../shared/lib/lineBoundaryKeys";
 import { ArrowUp, Plus, SmilePlus } from "../../../shared/ui/icons";
 import { AttachmentChip } from "../../sessions/ui/AttachmentChip";
 import type { Attachment } from "../../sessions/model/session";
@@ -338,6 +339,10 @@ export function MonoComposer({
       onFocus={onFocus}
       onChange={(event) => update(event.target.value)}
       onKeyDown={(event) => {
+        if (handleLineBoundaryKey(event.nativeEvent, event.currentTarget)) {
+          event.preventDefault();
+          return;
+        }
         if (
           event.key !== "Enter" ||
           event.shiftKey ||
