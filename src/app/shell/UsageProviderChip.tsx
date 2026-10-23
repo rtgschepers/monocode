@@ -153,7 +153,8 @@ export function UsageProviderChip({
   const iconHarness = presentation?.harness ?? limits.provider;
   const activeAccount = accounts.find((account) => account.id === accountId);
   const canManageAccounts = Boolean(onSelectAccount && onAddAccount);
-  const activeAccountLabel = activeAccount?.label ?? "Removed account";
+  const activeAccountLabel =
+    activeAccount?.label ?? (accountId ? "Removed account" : "No account");
   const identities = useProviderAccountIdentities(
     accounts,
     `${open}:${limits.updatedAt}:${reconnectState}`,

@@ -46,6 +46,8 @@ import {
   type ProviderSignInState,
 } from "../../features/sessions/ui/ProviderSignInPanel";
 import {
+  CLAUDE_ACCOUNT_REQUIRED_MESSAGE,
+  conversationProviderAccountId,
   newProviderAccount,
   providerAccountExists,
   providerAccounts,
@@ -232,8 +234,12 @@ export function UsageChips({
   const [, setAccountsVersion] = useState(0);
   const inflight = useRef<Promise<void> | null>(null);
   const claudeAccountId =
-    session?.harness === "claude" && session.providerAccountId
-      ? session.providerAccountId
+    session?.harness === "claude"
+      ? conversationProviderAccountId(
+          "claude",
+          session.providerAccountId,
+          project,
+        )
       : selectedProviderAccountId("claude", project);
   const codexAccountId =
     session?.harness === "codex" && session.providerAccountId
@@ -254,7 +260,9 @@ export function UsageChips({
     ? cachedClaude
     : unavailableRateLimits(
         "claude",
-        "This conversation uses a removed account",
+        claudeAccountId
+          ? "This conversation uses a removed account"
+          : CLAUDE_ACCOUNT_REQUIRED_MESSAGE,
       );
   const codex = codexAccountAvailable
     ? cachedCodex
@@ -406,8 +414,12 @@ export function UsageChips({
     [],
   );
 
+  // Without an account a Claude sign-in would land in the CLI's own login.
   const reconnectClaude = useCallback(
-    () => reconnectProvider("claude", claudeAccountId),
+    () =>
+      claudeAccountId
+        ? reconnectProvider("claude", claudeAccountId)
+        : Promise.reject(new Error(CLAUDE_ACCOUNT_REQUIRED_MESSAGE)),
     [claudeAccountId, reconnectProvider],
   );
 
@@ -486,7 +498,7 @@ export function UsageChips({
           now={now}
           variant={variant}
           {...claudeAccountProps}
-          onReconnect={reconnectClaude}
+          onReconnect={claudeAccountId ? reconnectClaude : undefined}
         />
       ) : null}
       {wantCodex ? (
@@ -579,7 +591,10 @@ function SessionChip({
     setLoginState("running");
     setLoginError(null);
     try {
-      await loginHarness(session.harness);
+      await loginHarness(
+        session.harness,
+        session.harness === "claude" ? session.providerAccountId : undefined,
+      );
       setOpen(false);
       setLoginState("complete");
     } catch (error) {

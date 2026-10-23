@@ -26,6 +26,7 @@ let onExit: ((code?: number | null) => void) | undefined;
 const writeChild = vi.fn(async (_id: string, line: string) => {
   sent.push(line);
 });
+const transferProviderSession = vi.fn(async () => undefined);
 
 vi.mock("../../core/child", () => ({
   resolveClaudeBinary: async () => ({ path: "/fake/claude" }),
@@ -43,6 +44,7 @@ vi.mock("../../core/child", () => ({
     onExit = exit;
   },
   writeChild,
+  transferProviderSession,
 }));
 
 const {
@@ -280,6 +282,7 @@ beforeEach(() => {
   onLine = undefined;
   onExit = undefined;
   writeChild.mockClear();
+  transferProviderSession.mockClear();
   __claudeTestReset();
 });
 
@@ -1001,14 +1004,55 @@ describe("claude legacy account resume", () => {
     await turn;
   });
 
-  it("does not resume a legacy default thread under a named account", async () => {
-    bindClaudeSession("s1", "legacy-session", "/repo");
+  it("carries a legacy default thread into the named account and resumes it", async () => {
+    bindClaudeSession("s1", "legacy-session", "/repo", "default");
     const { turn } = await startTurn("s1", {
+      providerAccountId: "account-work",
+    });
+    expect(transferProviderSession).toHaveBeenCalledWith(
+      "claude",
+      undefined,
+      "account-work",
+      "legacy-session",
+    );
+    expect(spawned[0]).toEqual(
+      expect.arrayContaining(["--resume", "legacy-session"]),
+    );
+    emit({ type: "result", subtype: "success", session_id: "legacy-session" });
+    await turn;
+  });
+
+  it("starts fresh when a legacy thread cannot be carried over", async () => {
+    transferProviderSession.mockRejectedValueOnce(new Error("missing"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    bindClaudeSession("s1", "legacy-session", "/repo");
+    const { turn, events } = await startTurn("s1", {
       providerAccountId: "account-work",
     });
     expect(spawned[0]).not.toContain("--resume");
     expect(spawned[0]).toContain("--session-id");
+    expect(warn).toHaveBeenCalled();
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "status",
+        text: expect.stringContaining("starts without its context"),
+      }),
+    );
+    warn.mockRestore();
     emit({ type: "result", subtype: "success", session_id: "sess_1" });
+    await turn;
+  });
+
+  it("leaves a named account's own thread where it is", async () => {
+    bindClaudeSession("s1", "work-session", "/repo", "account-work");
+    const { turn } = await startTurn("s1", {
+      providerAccountId: "account-work",
+    });
+    expect(transferProviderSession).not.toHaveBeenCalled();
+    expect(spawned[0]).toEqual(
+      expect.arrayContaining(["--resume", "work-session"]),
+    );
+    emit({ type: "result", subtype: "success", session_id: "work-session" });
     await turn;
   });
 });

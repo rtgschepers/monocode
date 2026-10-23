@@ -200,7 +200,10 @@ describe("useProviderAccountUsage", () => {
     localStorage.setItem(
       "monocode.providerAccounts.v1",
       JSON.stringify({
-        claude: [{ id: "account-work", provider: "claude", label: "Work" }],
+        claude: [
+          { id: "account-personal", provider: "claude", label: "Personal" },
+          { id: "account-work", provider: "claude", label: "Work" },
+        ],
       }),
     );
     container = document.createElement("div");
@@ -224,8 +227,8 @@ describe("useProviderAccountUsage", () => {
     await act(async () => render(true));
 
     expect(fetches.claude.mock.calls.map(([id]) => id).sort()).toEqual([
+      "account-personal",
       "account-work",
-      "default",
     ]);
     expect(latest.usage["claude:account-work"]?.session?.usedPercent).toBe(12);
     expect(latest.refreshing).toBe(false);
@@ -247,7 +250,9 @@ describe("useProviderAccountUsage", () => {
 
     await act(async () => latest.refresh());
     expect(fetches.claude).toHaveBeenCalledTimes(4);
-    expect(latest.usage["claude:default"]?.session?.usedPercent).toBe(70);
+    expect(latest.usage["claude:account-personal"]?.session?.usedPercent).toBe(
+      70,
+    );
     expect(latest.refreshing).toBe(false);
   });
 

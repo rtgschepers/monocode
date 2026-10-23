@@ -10,10 +10,9 @@ import {
   setCachedRateLimits,
 } from "../../features/providers/model/rateLimitsCache";
 import {
-  DEFAULT_PROVIDER_ACCOUNT_ID,
-  renameProviderAccount,
   saveProviderAccount,
   selectedProviderAccountId,
+  selectProviderAccount,
 } from "../../features/providers/model/providerAccounts";
 import {
   newSession,
@@ -26,6 +25,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => null),
 }));
 
+const PERSONAL_ACCOUNT_ID = "account-personal";
 const WORK_ACCOUNT_ID = "account-work";
 const PROJECT_A = "/repo/a";
 const PROJECT_B = "/repo/b";
@@ -56,13 +56,17 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  renameProviderAccount("claude", DEFAULT_PROVIDER_ACCOUNT_ID, "Personal");
+  saveProviderAccount({
+    id: PERSONAL_ACCOUNT_ID,
+    provider: "claude",
+    label: "Personal",
+  });
   saveProviderAccount({
     id: WORK_ACCOUNT_ID,
     provider: "claude",
     label: "Work",
   });
-  setCachedRateLimits("claude", DEFAULT_PROVIDER_ACCOUNT_ID, claudeLimits());
+  setCachedRateLimits("claude", PERSONAL_ACCOUNT_ID, claudeLimits());
   setCachedRateLimits("claude", WORK_ACCOUNT_ID, claudeLimits());
 });
 
@@ -114,6 +118,7 @@ async function openAccountPicker() {
 describe("UsageFooter account per project", () => {
   it("keeps another project on its own account after a blank session moves there", async () => {
     let session = newSession("claude", PROJECT_A, "claude:opus-5");
+    selectProviderAccount("claude", PROJECT_B, PERSONAL_ACCOUNT_ID);
 
     // Project A: the user picks Work. App stamps the blank session
     // (onSelectProviderAccount) and the footer saves the project selection.
@@ -130,7 +135,7 @@ describe("UsageFooter account per project", () => {
     // The user opens project B. App reuses the blank session (onCwdChange).
     session = retargetSessionToProject(session, PROJECT_B);
     expect(selectedProviderAccountId("claude", PROJECT_B)).toBe(
-      DEFAULT_PROVIDER_ACCOUNT_ID,
+      PERSONAL_ACCOUNT_ID,
     );
 
     await renderFooter(session);

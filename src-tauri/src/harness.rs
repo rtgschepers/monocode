@@ -22,6 +22,8 @@ const SSE_EVENT: &str = "harness-sse";
 const SSE_END_EVENT: &str = "harness-sse-end";
 
 const DEFAULT_PROVIDER_ACCOUNT_ID: &str = "default";
+pub(crate) const CLAUDE_ACCOUNT_REQUIRED: &str =
+    "No Claude account is selected. Add one in Settings > Accounts.";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -937,6 +939,12 @@ pub fn harness_spawn(
         Some(true) => return Err("Edit approvals are only supported for `devin acp`".into()),
     };
 
+    // Before `begin_spawn`, so a refused spawn leaves the running child alone.
+    if binary_provider.as_deref() == Some("claude") {
+        let claude_account = account.as_ref().filter(|a| a.provider == "claude");
+        require_claude_account("claude", claude_account.map(|a| a.id.as_str()))?;
+    }
+
     let _reservation = crate::worktree_lifecycle::reserve_spawn(&workdir)?;
     let (epoch, kill_all, prev) = host.begin_spawn(&session_id);
     if let Some(prev) = prev {
@@ -1085,6 +1093,17 @@ pub fn harness_spawn(
     Ok(pid)
 }
 
+/// Claude has no default account, so the CLI's own `~/.claude` login is never used.
+pub(crate) fn require_claude_account(
+    provider: &str,
+    account_id: Option<&str>,
+) -> Result<(), String> {
+    if provider == "claude" && account_id.is_none_or(|id| id == DEFAULT_PROVIDER_ACCOUNT_ID) {
+        return Err(CLAUDE_ACCOUNT_REQUIRED.into());
+    }
+    Ok(())
+}
+
 pub(crate) fn provider_account_dir(
     app: &AppHandle,
     provider: &str,
@@ -1210,6 +1229,7 @@ fn apply_provider_account(
     let Some(account) = account else {
         return Ok(());
     };
+    require_claude_account(&account.provider, Some(&account.id))?;
     let Some(dir) = provider_account_dir(app, &account.provider, Some(&account.id))? else {
         return Ok(());
     };
@@ -4629,5 +4649,32 @@ mod bash_mode_tests {
         assert!(text.contains(&format!("[{} bytes not kept]", 2 * BASH_MODE_KEEP + 3)));
         assert!(text.len() < 2 * BASH_MODE_KEEP + 100);
         assert_eq!(stream.unsent.len(), BASH_MODE_KEEP);
+    }
+}
+
+#[cfg(test)]
+mod claude_account_tests {
+    use super::{require_claude_account, CLAUDE_ACCOUNT_REQUIRED};
+
+    #[test]
+    fn claude_needs_a_named_profile() {
+        assert_eq!(
+            require_claude_account("claude", None),
+            Err(CLAUDE_ACCOUNT_REQUIRED.to_string())
+        );
+        assert_eq!(
+            require_claude_account("claude", Some("default")),
+            Err(CLAUDE_ACCOUNT_REQUIRED.to_string())
+        );
+        assert_eq!(
+            require_claude_account("claude", Some("account-work")),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn codex_keeps_its_default_account() {
+        assert_eq!(require_claude_account("codex", None), Ok(()));
+        assert_eq!(require_claude_account("codex", Some("default")), Ok(()));
     }
 }

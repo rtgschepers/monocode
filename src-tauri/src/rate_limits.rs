@@ -376,6 +376,15 @@ pub async fn fetch_claude_usage(
     app: AppHandle,
     account_id: Option<String>,
 ) -> Result<ClaudeUsageFetch, String> {
+    // The CLI's own login is not an account, so its credentials are never read or renewed.
+    if crate::harness::require_claude_account("claude", account_id.as_deref()).is_err() {
+        return Ok(usage_result(
+            "unavailable",
+            None,
+            None,
+            Some(crate::harness::CLAUDE_ACCOUNT_REQUIRED.into()),
+        ));
+    }
     let config_dir = crate::harness::provider_account_dir(&app, "claude", account_id.as_deref())?;
     tauri::async_runtime::spawn_blocking(move || fetch_claude_usage_sync(config_dir))
         .await

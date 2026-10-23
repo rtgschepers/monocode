@@ -1,6 +1,10 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { homeDir } from "../../../platform/tauri/fs";
-import { supportsAccountProfiles } from "../../../features/providers/model/providerAccounts";
+import {
+  CLAUDE_ACCOUNT_REQUIRED_MESSAGE,
+  providerHasDefaultAccount,
+  supportsAccountProfiles,
+} from "../../../features/providers/model/providerAccounts";
 import { HARNESS_TITLE, type HarnessId } from "../../../features/sessions/model/session";
 import * as child from "./child";
 import { harnessLoginArgs } from "./authSupport";
@@ -69,6 +73,13 @@ async function runHarnessLogin(
   harness: HarnessId,
   accountId?: string,
 ): Promise<void> {
+  // A bare Claude login would write the CLI's own ~/.claude credentials.
+  if (
+    !providerHasDefaultAccount(harness) &&
+    (!accountId || accountId === "default")
+  ) {
+    throw new Error(CLAUDE_ACCOUNT_REQUIRED_MESSAGE);
+  }
   const args = harnessLoginArgs(harness);
   const resolve = LOGIN_RESOLVERS[harness];
   if (!args || !resolve) {

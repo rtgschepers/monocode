@@ -178,6 +178,11 @@ describe("settings pages", () => {
       }
       return undefined;
     });
+    saveProviderAccount({
+      id: "account-work",
+      provider: "claude",
+      label: "Work",
+    });
     await render("providers");
 
     const emails = container.querySelectorAll<HTMLButtonElement>(
@@ -213,7 +218,12 @@ describe("settings pages", () => {
         ? { email: "user@example.com", plan: "Pro" }
         : undefined,
     );
-    setCachedRateLimits("claude", "default", {
+    saveProviderAccount({
+      id: "account-work",
+      provider: "claude",
+      label: "Work",
+    });
+    setCachedRateLimits("claude", "account-work", {
       provider: "claude",
       session: {
         usedPercent: 23,
@@ -262,7 +272,12 @@ describe("settings pages", () => {
 
   it("shows account usage bars as remaining capacity", async () => {
     saveShowRemainingUsage(true);
-    setCachedRateLimits("claude", "default", {
+    saveProviderAccount({
+      id: "account-work",
+      provider: "claude",
+      label: "Work",
+    });
+    setCachedRateLimits("claude", "account-work", {
       provider: "claude",
       session: {
         usedPercent: 23,
@@ -362,6 +377,13 @@ describe("settings pages", () => {
 
     expect(container.textContent).toContain("Claude Code");
     expect(container.textContent).toContain("Codex");
+    // Claude lists no CLI login of its own, so it starts empty.
+    expect(container.textContent).toContain(
+      "Add an account to use Claude Code.",
+    );
+    expect(
+      container.querySelectorAll('[aria-label="Rename Default account"]'),
+    ).toHaveLength(2);
     await act(async () =>
       container
         .querySelector<HTMLButtonElement>(
@@ -370,7 +392,7 @@ describe("settings pages", () => {
         .click(),
     );
     const defaultInput = container.querySelector<HTMLInputElement>(
-      '[aria-label="Rename Claude Code account"]',
+      '[aria-label="Rename Codex account"]',
     )!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
@@ -384,7 +406,8 @@ describe("settings pages", () => {
         .querySelector<HTMLButtonElement>('button[type="submit"]')!
         .click(),
     );
-    expect(providerAccounts("claude")[0]?.label).toBe("Primary");
+    expect(providerAccounts("codex")[0]?.label).toBe("Primary");
+    expect(providerAccounts("claude")).toEqual([]);
 
     await act(async () =>
       container

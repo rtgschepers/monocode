@@ -14,6 +14,7 @@ import {
   killChild,
   resolveClaudeBinary,
   spawnChild,
+  transferProviderSession,
   unwatchChild,
   watchChild,
   writeChild,
@@ -407,6 +408,39 @@ export async function forgetClaudeSession(sessionId: string): Promise<void> {
   await stopClaudeSession(sessionId);
 }
 
+/** Pre-profile conversations live in the CLI's own home, so they are carried into the profile. */
+async function carryLegacyResume(
+  input: HarnessSessionInput,
+  resume: Resume | undefined,
+): Promise<Resume | undefined> {
+  const to = input.providerAccountId;
+  if (
+    !resume ||
+    resume.cwd !== input.cwd ||
+    !sameProviderAccountId(resume.providerAccountId, undefined) ||
+    sameProviderAccountId(to, undefined)
+  )
+    return resume;
+  try {
+    await transferProviderSession("claude", undefined, to, resume.sessionId);
+  } catch (error) {
+    console.warn(
+      "[monocode] Could not carry the Claude conversation over",
+      error,
+    );
+    input.onEvent({
+      type: "status",
+      text: "Could not carry the earlier Claude conversation into this account, so Claude starts without its context.",
+    });
+    return resume;
+  }
+  const carried = { ...resume, providerAccountId: to };
+  // A forget or rebind during the copy wins over this stale binding.
+  if (resumeByThread.get(input.sessionId) === resume)
+    resumeByThread.set(input.sessionId, carried);
+  return carried;
+}
+
 export function bindClaudeSession(
   threadId: string,
   providerSessionId: string,
@@ -470,7 +504,10 @@ async function ensureLive(input: HarnessSessionInput): Promise<Live> {
     await stopClaudeSession(input.sessionId);
   }
 
-  const resume = resumeByThread.get(input.sessionId);
+  const resume = await carryLegacyResume(
+    input,
+    resumeByThread.get(input.sessionId),
+  );
   const canResume =
     resume != null &&
     resume.cwd === input.cwd &&

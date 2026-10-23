@@ -411,6 +411,18 @@ describe("switchSessionAccount", () => {
     });
   });
 
+  it("adopts the account in place when none was resolved", () => {
+    const session = {
+      ...newSession("claude", "/tmp"),
+      blocks: [user],
+      providerSessionId: "legacy-thread",
+    };
+    const next = switchSessionAccount(session, undefined, "work");
+    expect(next.providerAccountId).toBe("work");
+    expect(next.providerSessionId).toBe("legacy-thread");
+    expect(next.pendingSwitch).toBeUndefined();
+  });
+
   it("resumes the original thread when switched back", () => {
     const session = {
       ...newSession("claude", "/tmp"),

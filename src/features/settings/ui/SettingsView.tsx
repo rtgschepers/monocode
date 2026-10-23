@@ -239,7 +239,6 @@ import {
   subscribeProjectProviders,
 } from "../../sessions/model/projectProviders";
 import {
-  DEFAULT_PROVIDER_ACCOUNT_ID,
   newProviderAccount,
   providerAccounts,
   PROVIDER_ACCOUNT_PROVIDERS,
@@ -3721,7 +3720,7 @@ function ProviderAccountsSettings() {
       accountId: account.id,
       label: account.label,
     });
-    if (!accountCanUseToken(account.provider, account.id)) return;
+    if (!accountCanUseToken(account.provider)) return;
     void claudeAccountEndpoint(account.id)
       .then((endpoint) => {
         if (!endpoint) return;
@@ -3753,7 +3752,7 @@ function ProviderAccountsSettings() {
     try {
       if (editor.accountId) {
         const accountId = editor.accountId;
-        if (accountCanUseToken(editor.provider, accountId)) {
+        if (accountCanUseToken(editor.provider)) {
           if (editor.auth === "token") {
             await setClaudeAccountEndpoint(accountId, editorEndpoint(editor));
           } else if (editor.hasToken && editor.auth === "signin") {
@@ -3869,6 +3868,11 @@ function ProviderAccountsSettings() {
               ) : null}
             </div>
             <div className="border-t border-content/5 bg-content/[0.015] pl-10">
+              {accounts.length === 0 && !adding ? (
+                <p className="px-4 py-3 text-[11px] leading-4 text-content/40">
+                  Add an account to use {HARNESS_TITLE[provider]}.
+                </p>
+              ) : null}
               {accounts.map((account) => {
                 const editing =
                   editor?.provider === provider &&
@@ -3988,12 +3992,9 @@ function ProviderAccountsSettings() {
   );
 }
 
-/** Only named Claude profiles can swap their sign-in for an API token. */
-function accountCanUseToken(
-  provider: ProviderAccountProvider,
-  accountId: string | undefined,
-): boolean {
-  return provider === "claude" && accountId !== DEFAULT_PROVIDER_ACCOUNT_ID;
+/** Only Claude profiles can swap their sign-in for an API token. */
+function accountCanUseToken(provider: ProviderAccountProvider): boolean {
+  return provider === "claude";
 }
 
 function editorEndpoint(editor: AccountEditor) {
@@ -4025,7 +4026,7 @@ function ProviderAccountEditor({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const adding = !editor.accountId;
-  const canUseToken = accountCanUseToken(editor.provider, editor.accountId);
+  const canUseToken = accountCanUseToken(editor.provider);
   const usesToken = canUseToken && editor.auth === "token";
   // Leaving a token profile signs in with the browser on save.
   const signsIn = adding

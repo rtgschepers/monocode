@@ -1,4 +1,5 @@
 import { homeDir } from "../../../../platform/tauri/fs";
+import { selectedProviderAccountId } from "../../../../features/providers/model/providerAccounts";
 import {
   setHarnessModels,
   type AgentModel,
@@ -249,6 +250,9 @@ export async function discoverClaudeModels(
 async function discoverViaListModels(
   workingDirectory?: string,
 ): Promise<AgentModel[]> {
+  // The probe signs in like a session, so without a Claude profile only the version lists models.
+  const accountId = selectedProviderAccountId("claude", workingDirectory);
+  if (!accountId) return [];
   const { path } = await resolveClaudeBinary();
   const cwd = workingDirectory ?? (await homeDir());
   const sessionId = crypto.randomUUID();
@@ -300,7 +304,7 @@ async function discoverViaListModels(
       path,
       buildClaudeSpawnArgs({ isolated: true, sessionId }),
       cwd,
-      undefined,
+      { provider: "claude", id: accountId },
       "claude",
     );
     await writeChild(

@@ -8,6 +8,14 @@ const CHANGE_EVENT = "monocode-provider-accounts-changed";
 export const DEFAULT_PROVIDER_ACCOUNT_ID = "default";
 const DEFAULT_PROVIDER_ACCOUNT_LABEL = "Default account";
 
+/** Claude runs only on named profiles, so the CLI's own login is never an account. */
+export function providerHasDefaultAccount(provider: HarnessId): boolean {
+  return provider !== "claude";
+}
+
+export const CLAUDE_ACCOUNT_REQUIRED_MESSAGE =
+  "No Claude account is selected. Add one in Settings > Accounts.";
+
 /** Legacy sessions predate persisted account ids and belong to the default profile. */
 export function sameProviderAccountId(
   left: string | undefined,
@@ -19,7 +27,7 @@ export function sameProviderAccountId(
   );
 }
 
-/** Providers listed under Accounts, each with at least its CLI's own login. */
+/** Providers listed under Accounts; all but Claude include their CLI's own login. */
 export const PROVIDER_ACCOUNT_PROVIDERS = [
   "claude",
   "codex",
@@ -52,6 +60,9 @@ export function supportsAccountProfiles(
   return PROFILE_PROVIDERS.some((candidate) => candidate === provider);
 }
 
+/** Providers that always have a default account to fall back on. */
+type DefaultAccountProvider = Exclude<ProviderAccountProvider, "claude">;
+
 export type ProviderAccount = {
   id: string;
   provider: ProviderAccountProvider;
@@ -71,6 +82,7 @@ export function providerAccounts(
   provider: ProviderAccountProvider,
 ): ProviderAccount[] {
   const stored = readRecord<StoredAccounts>(ACCOUNTS_KEY);
+  const hasDefault = providerHasDefaultAccount(provider);
   const seen = new Set<string>([DEFAULT_PROVIDER_ACCOUNT_ID]);
   const accounts = Array.isArray(stored[provider]) ? stored[provider] : [];
   let defaultLabel = DEFAULT_PROVIDER_ACCOUNT_LABEL;
@@ -79,7 +91,7 @@ export function providerAccounts(
     const id = validAccountId(account?.id) ? account.id : "";
     const label = cleanLabel(account?.label);
     if (id === DEFAULT_PROVIDER_ACCOUNT_ID) {
-      if (label && !foundDefault) {
+      if (hasDefault && label && !foundDefault) {
         defaultLabel = label;
         foundDefault = true;
       }
@@ -91,6 +103,7 @@ export function providerAccounts(
     seen.add(id);
     return [{ id, provider, label }];
   });
+  if (!hasDefault) return profiles;
   return [
     {
       id: DEFAULT_PROVIDER_ACCOUNT_ID,
@@ -209,24 +222,52 @@ export function providerAccountExists(
   return providerAccounts(provider).some((account) => account.id === accountId);
 }
 
+/** `undefined` only for Claude, which has no default account to fall back on. */
+export function selectedProviderAccountId(
+  provider: DefaultAccountProvider,
+  project: string | undefined,
+): string;
 export function selectedProviderAccountId(
   provider: ProviderAccountProvider,
   project: string | undefined,
-): string {
+): string | undefined;
+export function selectedProviderAccountId(
+  provider: ProviderAccountProvider,
+  project: string | undefined,
+): string | undefined {
   const selections = readRecord<StoredSelections>(SELECTIONS_KEY);
   const id = selections[selectionKey(project)]?.[provider];
-  return providerAccounts(provider).some((account) => account.id === id)
-    ? id!
-    : DEFAULT_PROVIDER_ACCOUNT_ID;
+  const accounts = providerAccounts(provider);
+  const chosen = accounts.find((account) => account.id === id);
+  if (chosen) return chosen.id;
+  if (providerHasDefaultAccount(provider)) return DEFAULT_PROVIDER_ACCOUNT_ID;
+  // A lone profile is unambiguous; with several, guessing could burn the wrong quota.
+  return accounts.length === 1 ? accounts[0].id : undefined;
 }
 
 /** The account a conversation runs on: its own, or its folder's pick. */
 export function conversationProviderAccountId(
+  provider: DefaultAccountProvider,
+  accountId: string | undefined,
+  project: string | undefined,
+): string;
+export function conversationProviderAccountId(
   provider: ProviderAccountProvider,
   accountId: string | undefined,
   project: string | undefined,
-): string {
-  return accountId ?? selectedProviderAccountId(provider, project);
+): string | undefined;
+export function conversationProviderAccountId(
+  provider: ProviderAccountProvider,
+  accountId: string | undefined,
+  project: string | undefined,
+): string | undefined {
+  // Claude ids of "default" are legacy and mean the account that no longer exists.
+  const own =
+    !providerHasDefaultAccount(provider) &&
+    accountId === DEFAULT_PROVIDER_ACCOUNT_ID
+      ? undefined
+      : accountId;
+  return own ?? selectedProviderAccountId(provider, project);
 }
 
 export function selectProviderAccount(
@@ -250,7 +291,10 @@ export function providerAccountLabel(
 ): string {
   return (
     providerAccounts(provider).find((account) => account.id === accountId)
-      ?.label ?? "Default account"
+      ?.label ??
+    (providerHasDefaultAccount(provider)
+      ? DEFAULT_PROVIDER_ACCOUNT_LABEL
+      : "No account")
   );
 }
 

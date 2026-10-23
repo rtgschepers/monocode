@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
-  loginHarness: vi.fn<(_harness: string) => Promise<void>>(),
+  loginHarness: vi.fn<(_harness: string, _accountId?: string) => Promise<void>>(),
 }));
 const rateLimitsFetch = vi.hoisted(() => ({
   consumeCodexRateLimitResetCredit: vi.fn(),
@@ -29,6 +29,7 @@ import type {
   RateLimitProvider,
 } from "../../features/providers/model/rateLimits";
 import { clearCachedRateLimits } from "../../features/providers/model/rateLimitsCache";
+import { saveProviderAccount } from "../../features/providers/model/providerAccounts";
 import { UsageFooter } from "./UsageFooter";
 
 let container: HTMLDivElement;
@@ -48,6 +49,7 @@ beforeEach(() => {
   rateLimitsFetch.fetchClaudeRateLimits.mockReset();
   rateLimitsFetch.fetchCodexRateLimits.mockReset();
   clearCachedRateLimits();
+  localStorage.clear();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -67,6 +69,14 @@ function button(label: string): HTMLButtonElement {
   );
   expect(result, label).toBeDefined();
   return result!;
+}
+
+function addClaudeProfile() {
+  saveProviderAccount({
+    id: "account-work",
+    provider: "claude",
+    label: "Work",
+  });
 }
 
 function signedOutLimits(provider: RateLimitProvider): ProviderRateLimits {
@@ -92,6 +102,7 @@ function connectedLimits(provider: RateLimitProvider): ProviderRateLimits {
 
 describe("UsageFooter provider authentication", () => {
   it("shows the last Claude usage snapshot after a 503 refresh", async () => {
+    addClaudeProfile();
     rateLimitsFetch.fetchClaudeRateLimits
       .mockResolvedValueOnce({
         ...connectedLimits("claude"),
@@ -116,6 +127,23 @@ describe("UsageFooter provider authentication", () => {
     expect(dialog?.textContent).toContain("94%");
     expect(dialog?.textContent).toContain("Showing the last available snapshot");
     expect(dialog?.textContent).toContain("503");
+    expect(rateLimitsFetch.fetchClaudeRateLimits).toHaveBeenCalledWith(
+      "account-work",
+    );
+  });
+
+  it("asks for a Claude profile instead of reading the CLI's own login", async () => {
+    await act(async () =>
+      root.render(createElement(UsageFooter, { providers: ["claude"] })),
+    );
+    await act(async () => button("Refresh usage").click());
+    await act(async () => button("Claude Code usage details").click());
+
+    expect(rateLimitsFetch.fetchClaudeRateLimits).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      "No Claude account is selected",
+    );
+    expect(auth.loginHarness).not.toHaveBeenCalled();
   });
 
   it("reuses usage on remount and only fetches again on Refresh", async () => {
@@ -189,7 +217,7 @@ describe("UsageFooter provider authentication", () => {
     expect(dialog?.querySelector(".size-9")).not.toBeNull();
 
     act(() => button("Sign in to Grok Build").click());
-    expect(auth.loginHarness).toHaveBeenCalledWith("grok");
+    expect(auth.loginHarness).toHaveBeenCalledWith("grok", undefined);
     expect(dialog?.textContent).toContain("Waiting for browser…");
 
     await act(async () => finishLogin?.());
@@ -207,6 +235,7 @@ describe("UsageFooter provider authentication", () => {
       }
       return Promise.resolve();
     });
+    addClaudeProfile();
     rateLimitsFetch.fetchClaudeRateLimits.mockResolvedValue(
       signedOutLimits("claude"),
     );
@@ -225,7 +254,7 @@ describe("UsageFooter provider authentication", () => {
     act(() => button("Claude Code usage details").click());
     act(() => button("Sign in to Claude Code").click());
     await vi.waitFor(() =>
-      expect(auth.loginHarness).toHaveBeenCalledWith("claude"),
+      expect(auth.loginHarness).toHaveBeenCalledWith("claude", "account-work"),
     );
 
     act(() => button("Codex usage details").click());

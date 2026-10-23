@@ -23,6 +23,8 @@ pub fn provider_session_transfer(
 ) -> Result<(), String> {
     validate_thread_id(&provider_session_id)
         .map_err(|_| "Invalid provider session id".to_string())?;
+    // `from` may be the CLI's own home, where conversations predating profiles live.
+    crate::harness::require_claude_account(&provider, to_account_id.as_deref())?;
     let from = provider_home(&app, &provider, from_account_id.as_deref())?;
     let to = provider_home(&app, &provider, to_account_id.as_deref())?;
     if same_path(&from, &to) {

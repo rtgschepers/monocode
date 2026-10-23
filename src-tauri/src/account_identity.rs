@@ -24,6 +24,9 @@ pub async fn provider_account_identity(
     provider: String,
     account_id: Option<String>,
 ) -> Result<Option<ProviderAccountIdentity>, String> {
+    if crate::harness::require_claude_account(&provider, account_id.as_deref()).is_err() {
+        return Ok(None);
+    }
     let dir = crate::harness::provider_account_dir(&app, &provider, account_id.as_deref())?;
     tauri::async_runtime::spawn_blocking(move || match provider.as_str() {
         "claude" => Ok(claude_identity(dir)),

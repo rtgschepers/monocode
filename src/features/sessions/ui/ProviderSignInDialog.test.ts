@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = vi.hoisted(() => ({
-  loginHarness: vi.fn<(_harness: string) => Promise<void>>(),
+  loginHarness: vi.fn<(_harness: string, _accountId?: string) => Promise<void>>(),
 }));
 
 vi.mock("../../../integrations/harness/core/auth", () => ({
@@ -60,10 +60,26 @@ describe("ProviderSignInDialog", () => {
     expect(dialog?.querySelector(".size-9")).not.toBeNull();
 
     await act(async () => button("Sign in to Grok Build").click());
-    expect(auth.loginHarness).toHaveBeenCalledWith("grok");
+    expect(auth.loginHarness).toHaveBeenCalledWith("grok", undefined);
     expect(dialog?.textContent).toContain("Signed in to Grok Build");
 
     act(() => button("Continue").click());
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("signs Claude in to the conversation's profile", async () => {
+    auth.loginHarness.mockResolvedValue();
+    act(() =>
+      root.render(
+        createElement(ProviderSignInDialog, {
+          harness: "claude",
+          accountId: "account-work",
+          onClose: () => undefined,
+        }),
+      ),
+    );
+
+    await act(async () => button("Sign in to Claude Code").click());
+    expect(auth.loginHarness).toHaveBeenCalledWith("claude", "account-work");
   });
 });

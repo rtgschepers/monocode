@@ -143,10 +143,11 @@ export function pendingComposerSwitch(
  */
 export function switchSessionAccount(
   session: Session,
-  from: string,
+  from: string | undefined,
   to: string,
 ): Session {
-  if (sameProviderAccountId(from, to))
+  // No resolved account (legacy Claude) has nothing to hand off from; resume carries its transcript.
+  if (from === undefined || sameProviderAccountId(from, to))
     return session.providerAccountId === to
       ? session
       : { ...session, providerAccountId: to };

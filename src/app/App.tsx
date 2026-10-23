@@ -490,9 +490,11 @@ import {
 import { createSessionRemover } from "../features/sessions/model/sessionRemoval";
 import { shouldGenerateSessionTitle } from "../features/sessions/model/sessionTitle";
 import {
+  CLAUDE_ACCOUNT_REQUIRED_MESSAGE,
   conversationProviderAccountId,
   DEFAULT_PROVIDER_ACCOUNT_ID,
   providerAccountExists,
+  providerHasDefaultAccount,
   sameProviderAccountId,
   subscribeProviderAccounts,
   supportsProviderAccounts,
@@ -1566,6 +1568,7 @@ function Workspace({
     key: string;
     sessionId: string;
     harness: HarnessId;
+    accountId?: string;
   } | null>(null);
   const seenProviderSignInRequestsRef = useRef<Set<string> | null>(null);
   const seenProviderSignInRequests =
@@ -2410,14 +2413,22 @@ function Workspace({
   // Every working Claude or Codex session keeps its account's usage fresh,
   // whichever session is on screen.
   const workingUsageKeys = sessions
-    .flatMap((session) =>
-      sessionWorking(session) &&
-      (session.harness === "claude" || session.harness === "codex")
-        ? [
-            `${session.harness}:${session.providerAccountId ?? DEFAULT_PROVIDER_ACCOUNT_ID}`,
-          ]
-        : [],
-    )
+    .flatMap((session) => {
+      if (
+        !sessionWorking(session) ||
+        (session.harness !== "claude" && session.harness !== "codex")
+      )
+        return [];
+      const accountId =
+        session.harness === "claude"
+          ? conversationProviderAccountId(
+              "claude",
+              session.providerAccountId,
+              session.cwd,
+            )
+          : (session.providerAccountId ?? DEFAULT_PROVIDER_ACCOUNT_ID);
+      return accountId ? [`${session.harness}:${accountId}`] : [];
+    })
     .sort()
     .join("\n");
   useEffect(() => {
@@ -2445,6 +2456,15 @@ function Workspace({
       key: providerSignInRequestKey(active),
       sessionId: active.id,
       harness: active.harness,
+      // Claude signs in per profile, never into the CLI's own login.
+      accountId:
+        active.harness === "claude"
+          ? conversationProviderAccountId(
+              "claude",
+              active.providerAccountId,
+              active.cwd,
+            )
+          : undefined,
     };
   }, [active]);
   useEffect(() => {
@@ -3171,7 +3191,13 @@ function Workspace({
       }
 
       const currentId =
-        current.providerAccountId ?? DEFAULT_PROVIDER_ACCOUNT_ID;
+        provider === "claude"
+          ? conversationProviderAccountId(
+              provider,
+              current.providerAccountId,
+              current.cwd,
+            )
+          : (current.providerAccountId ?? DEFAULT_PROVIDER_ACCOUNT_ID);
       if (currentId === accountId) return;
 
       // Provider thread ids are account-owned. Keep the current conversation
@@ -7702,6 +7728,18 @@ function Workspace({
         : undefined;
       if (
         accountProvider &&
+        !providerAccountId &&
+        !providerHasDefaultAccount(accountProvider)
+      ) {
+        enqueueHarnessEvent(sessionId, {
+          type: "session.error",
+          message: CLAUDE_ACCOUNT_REQUIRED_MESSAGE,
+        });
+        flushHarnessEvents();
+        return false;
+      }
+      if (
+        accountProvider &&
         providerAccountId &&
         !providerAccountExists(accountProvider, providerAccountId)
       ) {
@@ -8417,7 +8455,7 @@ function Workspace({
           const branchMessage =
             harnessText || attachments.map((file) => file.name).join(", ");
           void generateHarnessBranchName(
-            pickTextHarness(current.harness),
+            pickTextHarness(current.harness, workCwd),
             workCwd,
             branchMessage,
           )
@@ -15544,6 +15582,7 @@ function Workspace({
             <ProviderSignInDialog
               key={providerSignInRequest.key}
               harness={providerSignInRequest.harness}
+              accountId={providerSignInRequest.accountId}
               onClose={() => setProviderSignInRequest(null)}
             />
           ) : null}

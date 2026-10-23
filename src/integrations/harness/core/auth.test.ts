@@ -70,14 +70,14 @@ describe("harness login", () => {
   });
 
   it("launches Claude's official login command and waits for success", async () => {
-    const login = loginHarness("claude");
+    const login = loginHarness("claude", "account-work");
     await vi.waitFor(() => expect(child.watchChild).toHaveBeenCalledOnce());
     expect(child.spawnChild).toHaveBeenCalledWith(
-      "monocode-provider-login-test-window-claude",
+      "monocode-provider-login-test-window-claude-account-work",
       "/bin/claude",
       ["auth", "login"],
       "/home/alice",
-      undefined,
+      { provider: "claude", id: "account-work" },
       "claude",
     );
 
@@ -85,6 +85,16 @@ describe("harness login", () => {
       ((code: number | null) => void) | undefined;
     onExit?.(0);
     await expect(login).resolves.toBeUndefined();
+  });
+
+  it("never signs Claude in to the CLI's own login", async () => {
+    await expect(loginHarness("claude")).rejects.toThrow(
+      "No Claude account is selected",
+    );
+    await expect(loginHarness("claude", "default")).rejects.toThrow(
+      "No Claude account is selected",
+    );
+    expect(child.spawnChild).not.toHaveBeenCalled();
   });
 
   it("isolates a named Codex account during sign-in", async () => {

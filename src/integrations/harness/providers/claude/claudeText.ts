@@ -1,5 +1,9 @@
 import { modelsFor } from "../../../../features/sessions/model/models";
 import {
+  CLAUDE_ACCOUNT_REQUIRED_MESSAGE,
+  conversationProviderAccountId,
+} from "../../../../features/providers/model/providerAccounts";
+import {
   killChild,
   resolveClaudeBinary,
   spawnChild,
@@ -231,10 +235,17 @@ async function promptOnLive(input: {
 
 async function ensureLive(
   cwd: string,
-  providerAccountId?: string,
+  requestedAccountId?: string,
   requestedModel?: string,
   requestedSettings?: TextSettings,
 ): Promise<LiveText> {
+  // Git text and warmups name no account, so they run on the folder's Claude profile.
+  const providerAccountId = conversationProviderAccountId(
+    "claude",
+    requestedAccountId,
+    cwd,
+  );
+  if (!providerAccountId) throw new Error(CLAUDE_ACCOUNT_REQUIRED_MESSAGE);
   const model = pickTextModel(requestedModel);
   const settings = requestedSettings ?? textSettings(model);
   if (
@@ -253,7 +264,7 @@ async function ensureLive(
 
 async function startLive(
   cwd: string,
-  providerAccountId?: string,
+  providerAccountId: string,
   model = pickTextModel(),
   settings = textSettings(model),
 ): Promise<LiveText> {
@@ -301,7 +312,7 @@ async function startLive(
         maxTurns: settings.maxTurns,
       }),
       cwd,
-      { provider: "claude", id: providerAccountId ?? "default" },
+      { provider: "claude", id: providerAccountId },
       "claude",
     );
     live = session;
