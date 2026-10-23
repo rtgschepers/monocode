@@ -280,7 +280,12 @@ export function useProjectMenu({
         : null);
   };
 
-  const restoreFocus = () => trigger.current?.focus();
+  const restoreFocus = (fallback?: () => HTMLElement | null) => {
+    const target = trigger.current?.isConnected
+      ? trigger.current
+      : fallback?.();
+    target?.focus();
+  };
 
   const closeNotificationMenu = () => {
     setNotificationMenu(null);
@@ -518,7 +523,12 @@ export function useProjectMenu({
         onPick={() => {}}
         onClose={() => {
           setGroupMenu(null);
-          restoreFocus();
+          // The first group's trigger unmounts once the group exists, so land on the group itself.
+          restoreFocus(() =>
+            document.querySelector<HTMLElement>(
+              `[data-project-group="${CSS.escape(group.id)}"] button[aria-expanded]`,
+            ),
+          );
         }}
         showActions={false}
         ariaLabel="Project group actions"

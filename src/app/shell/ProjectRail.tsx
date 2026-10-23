@@ -554,6 +554,12 @@ export function ProjectRail({
                   : undefined
               }
               onAdd={onOpenProject}
+              onAddGroup={
+                // Until a group exists the Groups header is hidden, so offer creation here.
+                projectGroups.length === 0
+                  ? (x, y) => projectMenu.createGroup(x, y)
+                  : undefined
+              }
               cwd={cwd}
               busy={busy}
               statsEnabled={visible}
@@ -638,6 +644,7 @@ function ProjectSection({
   muteStatuses,
   emptyLabel,
   onAdd,
+  onAddGroup,
   cwd,
   busy,
   statsEnabled,
@@ -659,6 +666,7 @@ function ProjectSection({
   muteStatuses: ReadonlyMap<string, string | null>;
   emptyLabel?: string;
   onAdd?: () => void;
+  onAddGroup?: (x: number, y: number) => void;
   cwd: string;
   busy: Set<string>;
   statsEnabled: boolean;
@@ -677,7 +685,11 @@ function ProjectSection({
 }) {
   return (
     <div className="shrink-0 mb-2">
-      <ProjectSectionHeader label={label} onAdd={onAdd} />
+      <ProjectSectionHeader
+        label={label}
+        onAdd={onAdd}
+        onAddGroup={onAddGroup}
+      />
       {items.length === 0 && emptyLabel ? (
         <p className="px-4 pb-1 text-[11px] leading-tight text-content/40">
           {emptyLabel}
@@ -880,7 +892,14 @@ function ProjectGroupSection({
           <MoreHorizontal className="size-4" strokeWidth={1.75} />
         </button>
       </div>
-      {expanded ? (
+      {expanded && items.length === 0 ? (
+        <p
+          data-project-group-empty
+          className="px-3 pb-2 text-[11px] leading-tight text-content/40"
+        >
+          Right-click a project to move it here
+        </p>
+      ) : expanded ? (
         <div data-project-group-items className="flex flex-col gap-px p-1">
           {items.map((item) => (
             <ProjectCard

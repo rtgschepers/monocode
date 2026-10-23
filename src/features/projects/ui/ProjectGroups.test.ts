@@ -173,11 +173,9 @@ it("reopens a collapsed group even when storage rejects the write", async () => 
   const header = () => button("Client work, 1 project");
   expect(header().getAttribute("aria-expanded")).toBe("false");
 
-  const setItem = vi
-    .spyOn(localStorage, "setItem")
-    .mockImplementation(() => {
-      throw new DOMException("full", "QuotaExceededError");
-    });
+  const setItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+    throw new DOMException("full", "QuotaExceededError");
+  });
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   try {
     act(() => header().click());
@@ -190,12 +188,67 @@ it("reopens a collapsed group even when storage rejects the write", async () => 
   }
 });
 
+/** The "New project group" buttons currently in the rail. */
+function newGroupButtons(): HTMLButtonElement[] {
+  return [
+    ...container.querySelectorAll<HTMLButtonElement>(
+      'button[aria-label="New project group"]',
+    ),
+  ];
+}
+
+it("offers a new-group button in the Projects header until a group exists", async () => {
+  savePinnedProjects(["/work/personal"]);
+  await renderRail();
+  expect(sectionLabels()).toEqual(["Pinned", "Projects"]);
+  expect(newGroupButtons()).toHaveLength(1);
+  expect(newGroupButtons()[0].parentElement!.textContent).toContain("Projects");
+
+  newGroupButtons()[0].focus();
+  act(() => newGroupButtons()[0].click());
+  const groups = loadProjectGroups();
+  expect(groups).toHaveLength(1);
+  const input = document.querySelector<HTMLInputElement>(
+    '[role="menu"][aria-label="Project group actions"] input[aria-label="Group name"]',
+  );
+  expect(input).not.toBeNull();
+  expect(sectionLabels()).toEqual(["Pinned", "Groups", "Projects"]);
+  const group = container.querySelector<HTMLElement>(
+    `[data-project-group="${groups[0].id}"]`,
+  )!;
+  expect(group).not.toBeNull();
+  expect(button(`${groups[0].name}, 0 projects`)).toBeDefined();
+  expect(group.querySelector("[data-project-group-empty]")).not.toBeNull();
+  expect(group.querySelector("[data-project-group-items]")).toBeNull();
+  // Pinned and ungrouped projects stay where they were.
+  expect(button("personal")).toBeDefined();
+  expect(button("client")).toBeDefined();
+  expect(loadProjectGroupAssignments()).toEqual({});
+
+  // Only the Groups header keeps the button once a group exists.
+  const [only] = newGroupButtons();
+  expect(newGroupButtons()).toHaveLength(1);
+  expect(only.parentElement!.textContent).toContain("Groups");
+  expect(only.parentElement!.textContent).not.toContain("Projects");
+
+  // The clicked button is gone, so closing the menu focuses the new group.
+  act(() => {
+    input!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+  });
+  expect(document.activeElement).toBe(button(`${groups[0].name}, 0 projects`));
+
+  // A collapsed empty group shows neither the hint nor an items box.
+  act(() => button(`${groups[0].name}, 0 projects`).click());
+  expect(group.querySelector("[data-project-group-empty]")).toBeNull();
+  expect(group.querySelector("[data-project-group-items]")).toBeNull();
+});
+
 it("creates, styles, assigns, and deletes a group from the rail", async () => {
   await renderRail();
   expect(sectionLabels()).toEqual(["Projects"]);
-  expect(
-    document.querySelector('button[aria-label="New project group"]'),
-  ).toBeNull();
+  expect(newGroupButtons()).toHaveLength(1);
 
   const personal = button("personal");
   await act(async () => {
@@ -247,9 +300,7 @@ it("creates, styles, assigns, and deletes a group from the rail", async () => {
   expect(loadProjectGroupAssignments()).toEqual({});
   expect(button("personal")).toBeDefined();
   expect(sectionLabels()).toEqual(["Projects"]);
-  expect(
-    document.querySelector('button[aria-label="New project group"]'),
-  ).toBeNull();
+  expect(newGroupButtons()).toHaveLength(1);
 });
 
 describe("dragging groups of different heights", () => {
