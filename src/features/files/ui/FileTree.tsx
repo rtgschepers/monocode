@@ -1211,6 +1211,10 @@ function TreeChildren({
   );
 }
 
+// Not Ctrl on macOS: Ctrl-click there is the context-menu gesture.
+const isExternalOpenClick = (event: ReactMouseEvent) =>
+  IS_MAC ? event.metaKey : event.ctrlKey;
+
 function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
   const {
     expanded,
@@ -1268,11 +1272,16 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
     };
   }, [entry.isDir, entry.path, open, epoch]);
 
-  const onClick = () => {
+  const onClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
     if (consumeFileClick()) return;
     onSelect(entry.path);
     if (entry.isDir) onToggle(entry.path);
-    else onOpenFile(entry.path, undefined, { exact: true });
+    else if (!isExternalOpenClick(event)) {
+      onOpenFile(entry.path, undefined, { exact: true });
+    } else if (event.detail <= 1) {
+      // Later clicks of a Mod-double-click would launch PhpStorm again.
+      onOpenFile(entry.path, undefined, { exact: true, external: true });
+    }
   };
 
   const siblings = (peekDir(parentPath(entry.path)) ?? [])
@@ -1298,8 +1307,8 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
           title={entry.path}
           aria-expanded={entry.isDir ? open : undefined}
           onClick={onClick}
-          onDoubleClick={() => {
-            if (!entry.isDir) {
+          onDoubleClick={(event) => {
+            if (!entry.isDir && !isExternalOpenClick(event)) {
               onOpenFile(entry.path, undefined, { exact: true, pin: true });
             }
           }}

@@ -7168,24 +7168,28 @@ function Workspace({
 
   const onOpenFile = useCallback<OpenFileFn>(
     (path, navigation, options) => {
-      closeMonoView();
+      // An external open leaves the Mono view up unless it falls back to a tab.
+      if (!options?.external) closeMonoView();
       void (async () => {
         const fileCwd = gitCwdRef.current;
         const fileProjectCwd = sidebarCwdRef.current;
         const resolved = await resolveFileOpenRequest(fileCwd, path, options);
         rememberOpenedFile(fileCwd, resolved);
-        // Files open in PhpStorm; the built-in editor is only the fallback
-        // when PhpStorm cannot be launched.
-        try {
-          await openFileInExternalEditor(
-            "phpstorm",
-            resolved,
-            navigation?.line,
-            navigation?.column,
-          );
-          return;
-        } catch (error) {
-          console.warn("Could not open file in PhpStorm", error);
+        // The checkout is passed so PhpStorm opens the file in its matching window.
+        if (options?.external) {
+          try {
+            await openFileInExternalEditor(
+              "phpstorm",
+              resolved,
+              navigation?.line,
+              navigation?.column,
+              fileCwd && fileCwd !== "~" ? fileCwd : undefined,
+            );
+            return;
+          } catch (error) {
+            console.warn("Could not open file in PhpStorm", error);
+          }
+          closeMonoView();
         }
         const tab = tabsRef.current.find(
           (entry) => entry.id === activeTabIdRef.current,

@@ -1,6 +1,5 @@
-#[cfg(target_os = "macos")]
-use std::path::Path;
-use std::path::PathBuf;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde::Serialize;
@@ -250,9 +249,41 @@ fn launch_editor_sync(editor_id: &str, cwd: &str) -> Result<(), String> {
         .map_err(|error| format!("Could not open {}: {error}", editor.name))
 }
 
+// Remote, missing or unrelated projects are dropped so the IDE never opens a stray window.
+fn launch_project(path: &Path, project: Option<&str>) -> Option<PathBuf> {
+    project
+        .filter(|project| !project.is_empty())
+        .map(expand_home)
+        .filter(|project| project.is_dir() && path.starts_with(project))
+}
+
+// JetBrains launchers take `[project] [--line N [--column M]] file` and forward it to a running IDE.
+fn file_launch_args(
+    path: &Path,
+    project: Option<&Path>,
+    line: Option<u32>,
+    column: Option<u32>,
+) -> Vec<OsString> {
+    let mut args: Vec<OsString> = Vec::new();
+    if let Some(project) = project {
+        args.push(project.as_os_str().to_owned());
+    }
+    if let Some(line) = line {
+        args.push("--line".into());
+        args.push(line.to_string().into());
+        if let Some(column) = column {
+            args.push("--column".into());
+            args.push(column.to_string().into());
+        }
+    }
+    args.push(path.as_os_str().to_owned());
+    args
+}
+
 fn launch_file_sync(
     editor_id: &str,
     path: &str,
+    project: Option<&str>,
     line: Option<u32>,
     column: Option<u32>,
 ) -> Result<(), String> {
@@ -264,18 +295,8 @@ fn launch_file_sync(
     let launcher =
         resolve_editor(editor).ok_or_else(|| format!("{} is no longer installed.", editor.name))?;
 
-    // JetBrains launchers take `--line`/`--column` ahead of the path and hand
-    // the request to an already running IDE.
-    let mut args: Vec<std::ffi::OsString> = Vec::new();
-    if let Some(line) = line {
-        args.push("--line".into());
-        args.push(line.to_string().into());
-        if let Some(column) = column {
-            args.push("--column".into());
-            args.push(column.to_string().into());
-        }
-    }
-    args.push(path.into_os_string());
+    let project = launch_project(&path, project);
+    let args = file_launch_args(&path, project.as_deref(), line, column);
 
     #[cfg(target_os = "macos")]
     let mut command = match launcher {
@@ -315,12 +336,15 @@ fn launch_file_sync(
 pub async fn open_file_in_external_editor(
     editor_id: String,
     path: String,
+    project: Option<String>,
     line: Option<u32>,
     column: Option<u32>,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || launch_file_sync(&editor_id, &path, line, column))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        launch_file_sync(&editor_id, &path, project.as_deref(), line, column)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command(async)]
@@ -347,6 +371,58 @@ mod tests {
             );
             assert!(!editor.commands.is_empty());
         }
+    }
+
+    fn strings(args: Vec<OsString>) -> Vec<String> {
+        args.into_iter()
+            .map(|arg| arg.into_string().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn file_launch_args_put_the_project_before_the_position_and_file() {
+        let args = file_launch_args(
+            Path::new("/repo/src/a.php"),
+            Some(Path::new("/repo")),
+            Some(12),
+            Some(3),
+        );
+        assert_eq!(
+            strings(args),
+            ["/repo", "--line", "12", "--column", "3", "/repo/src/a.php"]
+        );
+    }
+
+    #[test]
+    fn file_launch_args_without_project_or_line_pass_only_the_file() {
+        let args = file_launch_args(Path::new("/repo/a.php"), None, None, Some(3));
+        assert_eq!(strings(args), ["/repo/a.php"]);
+        let args = file_launch_args(Path::new("/repo/a.php"), None, Some(7), None);
+        assert_eq!(strings(args), ["--line", "7", "/repo/a.php"]);
+    }
+
+    #[test]
+    fn launch_project_keeps_only_a_local_folder_containing_the_file() {
+        let root = std::env::temp_dir().join(format!("mc-ext-editor-{}", std::process::id()));
+        let other = root.join("other");
+        let file = root.join("repo/src/a.php");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(&file, "").unwrap();
+        let repo = root.join("repo");
+        let repo_str = repo.to_str().unwrap();
+
+        assert_eq!(launch_project(&file, Some(repo_str)), Some(repo.clone()));
+        assert_eq!(launch_project(&file, None), None);
+        assert_eq!(launch_project(&file, Some("")), None);
+        assert_eq!(launch_project(&file, Some(other.to_str().unwrap())), None);
+        assert_eq!(launch_project(&file, Some(file.to_str().unwrap())), None);
+        assert_eq!(
+            launch_project(&file, Some(root.join("missing").to_str().unwrap())),
+            None
+        );
+
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

@@ -42,6 +42,8 @@ export type FileOpenOptions = {
   exact?: boolean;
   /** Open as a permanent tab instead of the pane's preview tab. */
   pin?: boolean;
+  /** Open in PhpStorm, falling back to the built-in editor if it cannot launch. */
+  external?: boolean;
 };
 
 export type OpenFileFn = (

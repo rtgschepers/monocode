@@ -17,8 +17,9 @@ import {
 } from "../../../shared/lib/drag";
 import { FileTree } from "./FileTree";
 
-const { iconRender, directories, clipboardFiles, copied, dragDrop } =
+const { iconRender, directories, clipboardFiles, copied, dragDrop, platform } =
   vi.hoisted(() => ({
+    platform: { mac: true },
     iconRender: vi.fn(),
     directories: new Map<string, FsEntry[]>(),
     clipboardFiles: [] as string[],
@@ -49,6 +50,14 @@ vi.mock("@tauri-apps/api/webview", () => ({
       };
     },
   }),
+}));
+
+// A getter so the Mod-click tests can switch between Cmd (macOS) and Ctrl.
+vi.mock("../../../platform/tauri/platform", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  get IS_MAC() {
+    return platform.mac;
+  },
 }));
 
 // Count row renders independently of FileTypeIcon's own memoization.
@@ -474,6 +483,98 @@ describe("FileTree starts Explorer file drags", () => {
     expect(events).toEqual([]);
 
     window.removeEventListener(EXPLORER_FILE_POINTER_DRAG_EVENT, onDrag);
+  });
+});
+
+describe("FileTree opens files on click", () => {
+  const click = (el: HTMLElement, init: MouseEventInit) =>
+    act(() => {
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, ...init }));
+    });
+  const doubleClick = (el: HTMLElement, init: MouseEventInit = {}) =>
+    act(() => {
+      el.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, detail: 1, ...init }),
+      );
+      el.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, detail: 2, ...init }),
+      );
+      el.dispatchEvent(
+        new MouseEvent("dblclick", { bubbles: true, detail: 2, ...init }),
+      );
+    });
+
+  beforeEach(async () => {
+    directories.set(cwd, [folder("src"), file("first.ts")]);
+    directories.set(`${cwd}/src`, []);
+    await refreshDir(cwd);
+    await act(async () => render());
+  });
+
+  it("previews on a plain click and pins on a double click", async () => {
+    await click(row("first.ts"), { detail: 1 });
+    expect(props.onOpenFile).toHaveBeenLastCalledWith(
+      `${cwd}/first.ts`,
+      undefined,
+      { exact: true },
+    );
+    vi.mocked(props.onOpenFile).mockClear();
+    await doubleClick(row("first.ts"));
+    expect(vi.mocked(props.onOpenFile).mock.calls).toEqual([
+      [`${cwd}/first.ts`, undefined, { exact: true }],
+      [`${cwd}/first.ts`, undefined, { exact: true }],
+      [`${cwd}/first.ts`, undefined, { exact: true, pin: true }],
+    ]);
+  });
+
+  it("opens externally on Cmd-click without a built-in tab", async () => {
+    await click(row("first.ts"), { detail: 1, metaKey: true });
+    expect(vi.mocked(props.onOpenFile).mock.calls).toEqual([
+      [`${cwd}/first.ts`, undefined, { exact: true, external: true }],
+    ]);
+  });
+
+  it("opens externally once on a Cmd-double-click", async () => {
+    await doubleClick(row("first.ts"), { metaKey: true });
+    expect(vi.mocked(props.onOpenFile).mock.calls).toEqual([
+      [`${cwd}/first.ts`, undefined, { exact: true, external: true }],
+    ]);
+  });
+
+  it("treats Ctrl-click on macOS as a plain click", async () => {
+    await click(row("first.ts"), { detail: 1, ctrlKey: true });
+    expect(vi.mocked(props.onOpenFile).mock.calls).toEqual([
+      [`${cwd}/first.ts`, undefined, { exact: true }],
+    ]);
+  });
+
+  describe("off macOS", () => {
+    beforeEach(() => {
+      platform.mac = false;
+    });
+    afterEach(() => {
+      platform.mac = true;
+    });
+
+    it("opens externally on Ctrl-click", async () => {
+      await click(row("first.ts"), { detail: 1, ctrlKey: true });
+      expect(vi.mocked(props.onOpenFile).mock.calls).toEqual([
+        [`${cwd}/first.ts`, undefined, { exact: true, external: true }],
+      ]);
+    });
+
+    it("treats Meta-click as a plain click", async () => {
+      await click(row("first.ts"), { detail: 1, metaKey: true });
+      expect(vi.mocked(props.onOpenFile).mock.calls).toEqual([
+        [`${cwd}/first.ts`, undefined, { exact: true }],
+      ]);
+    });
+  });
+
+  it("toggles a folder on Cmd-click instead of opening it", async () => {
+    await click(row("src"), { detail: 1, metaKey: true });
+    expect(props.onOpenFile).not.toHaveBeenCalled();
+    expect(row("src").getAttribute("aria-expanded")).toBe("true");
   });
 });
 

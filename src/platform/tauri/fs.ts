@@ -132,10 +132,12 @@ export function openFileInExternalEditor(
   path: string,
   line?: number,
   column?: number,
+  project?: string,
 ): Promise<void> {
   return invoke<void>("open_file_in_external_editor", {
     editorId,
     path,
+    project,
     line,
     column,
   });
