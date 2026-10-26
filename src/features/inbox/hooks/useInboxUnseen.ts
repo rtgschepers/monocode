@@ -11,6 +11,7 @@ import {
   inboxItemKey,
   inboxProjectsForRail,
   listInboxItems,
+  uniqueInboxProjects,
   type GithubWorkItem,
   type InboxItem,
   type InboxQuery,
@@ -43,7 +44,6 @@ import {
 import { loadHiddenLinearTeamIds } from "../model/linear";
 import { JIRA_CHANGE_EVENT, loadHiddenJiraProjectIds } from "../model/jira";
 import type { RecentProject } from "../../projects/model/recents";
-import { inProjectScope } from "../../projects/model/projectScope";
 import type { SessionSummary } from "../../sessions/data/sessionStore";
 import { playCue } from "../../settings/model/sounds";
 import {
@@ -106,10 +106,9 @@ export function useInboxActivity(
   cwd: string,
   sessions: readonly SessionSummary[],
   options?: {
-    onAppeared?: (items: InboxItem[]) => void;
-    /** Only this project's items (and project-less ones) light the badge.
-     * Polling, chimes and linked sessions still cover every project. */
-    scopeProject?: string;
+    /** `listed` is the whole poll, for automations catching up on items
+     * MonoCode did not see appear. */
+    onAppeared?: (items: InboxItem[], listed: InboxItem[]) => void;
   },
 ): InboxActivity {
   const [unseen, setUnseen] = useState(false);
@@ -122,9 +121,6 @@ export function useInboxActivity(
   const notifications = useRef(new InboxNotificationTracker());
   const sessionsRef = useRef(sessions);
   const onAppearedRef = useRef(options?.onAppeared);
-  const scopeProject = options?.scopeProject;
-  const scopeRef = useRef(scopeProject);
-  scopeRef.current = scopeProject;
   const lastPulledAt = useRef<number | null>(null);
 
   const applyUnseen = useCallback(() => {
@@ -132,10 +128,8 @@ export function useInboxActivity(
     // Category choices and mute affect badges, never the item's unread state.
     setUnseen(
       inboxHasUnseenItems(
-        entriesRef.current.filter(
-          (entry) =>
-            inProjectScope(entry.projectPath, scopeRef.current) &&
-            allowsProjectNotificationIndicator(entry, preferences),
+        entriesRef.current.filter((entry) =>
+          allowsProjectNotificationIndicator(entry, preferences),
         ),
       ),
     );
@@ -147,7 +141,7 @@ export function useInboxActivity(
 
   useEffect(() => {
     applyUnseen();
-  }, [applyUnseen, scopeProject]);
+  }, [applyUnseen]);
 
   useLayoutEffect(() => {
     onAppearedRef.current = options?.onAppeared;
@@ -210,13 +204,14 @@ export function useInboxActivity(
         );
         const observed = notifications.current.observe(
           listed.items,
-          inboxListCacheKey(projects, query),
+          inboxListCacheKey([], query),
           Object.keys(listed.errors) as InboxProvider[],
+          uniqueInboxProjects(projects).map((project) => project.path),
         );
         const changed = observed.changed;
         // Invoke on every successful poll so retained automation claims can be
         // retried even when the item is no longer newly appeared.
-        onAppearedRef.current?.(observed.appeared);
+        onAppearedRef.current?.(observed.appeared, listed.items);
         const selfAuthored = changed.filter((item) =>
           consumeInboxSelfActivity(item),
         );

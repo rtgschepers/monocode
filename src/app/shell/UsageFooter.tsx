@@ -81,7 +81,6 @@ export function UsageFooter({
   projectTerminalOpen = false,
   onSelectAccount,
   onManageAccounts,
-  inset = false,
   pressureSlot,
 }: {
   providers: RateLimitProvider[];
@@ -99,8 +98,6 @@ export function UsageFooter({
     accountId: string,
   ) => void;
   onManageAccounts?: (provider: ProviderAccountProvider) => void;
-  /** Sits on the inset layout's outer glass, below the card. */
-  inset?: boolean;
   /** Receives the slot beside the terminal button for the pressure chip. */
   pressureSlot?: (element: HTMLSpanElement | null) => void;
 }) {
@@ -129,14 +126,7 @@ export function UsageFooter({
   return (
     <footer
       aria-label={ariaLabel}
-      // Inset: the card's edge above reads as part of the gap, so a little
-      // room below keeps the chips optically centred. The pills line up with
-      // the card's edges, which carry their own padding.
-      className={`flex shrink-0 items-center gap-1.5 overflow-x-auto text-[11px] text-content/55${
-        inset
-          ? " inset-footer mr-1.5 h-[30px] pb-0.5"
-          : " h-7 border-t border-stroke px-3"
-      }`}
+      className="flex shrink-0 items-center gap-1.5 overflow-x-auto text-[11px] text-content/55 h-7 border-t border-stroke px-3"
     >
       <UsageChips
         providers={providers}
@@ -144,14 +134,10 @@ export function UsageFooter({
         project={project}
         onSelectAccount={onSelectAccount}
         onManageAccounts={onManageAccounts}
-        variant={inset ? "inset" : "footer"}
+        variant="footer"
         fallback={
           session ? (
-            <SessionChip
-              key={session.id ?? session.harness}
-              session={session}
-              inset={inset}
-            />
+            <SessionChip key={session.id ?? session.harness} session={session} />
           ) : null
         }
       />
@@ -168,14 +154,11 @@ export function UsageFooter({
               terminals={terminals}
               open={terminalOpen}
               onToggle={onToggleTerminal}
-              inset={inset}
             />
           ) : showTerminalButton ? (
             <button
               type="button"
-              className={`inline-flex h-5 shrink-0 items-center gap-1.5 whitespace-nowrap hover:bg-content/10 ${
-                inset ? "rounded-full px-2" : "rounded-md px-1.5"
-              } ${
+              className={`inline-flex h-5 shrink-0 items-center gap-1.5 whitespace-nowrap hover:bg-content/10 rounded-md px-1.5 ${
                 projectTerminalOpen
                   ? "text-accent"
                   : "text-content/40 hover:text-content"
@@ -558,13 +541,7 @@ function TerminalLiveMark() {
   );
 }
 
-function SessionChip({
-  session,
-  inset,
-}: {
-  session: UsageFooterSession;
-  inset: boolean;
-}) {
+function SessionChip({ session }: { session: UsageFooterSession }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [loginState, setLoginState] = useState<ProviderSignInState>("idle");
@@ -622,7 +599,7 @@ function SessionChip({
       <button
         ref={trigger}
         type="button"
-        className={USAGE_CHIP_CLASSES[inset ? "inset" : "footer"]}
+        className={USAGE_CHIP_CLASSES.footer}
         aria-label={`${HARNESS_TITLE[session.harness]} sign-in required`}
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -667,12 +644,10 @@ function RunningTerminalChip({
   terminals,
   open: panelOpen,
   onToggle,
-  inset,
 }: {
   terminals: RunningTerminal[];
   open: boolean;
   onToggle?: (fileId: string) => void;
-  inset: boolean;
 }) {
   const root = useRef<HTMLButtonElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -700,9 +675,7 @@ function RunningTerminalChip({
       <button
         ref={root}
         type="button"
-        className={`inline-flex min-w-0 max-w-[16rem] items-center gap-1.5 whitespace-nowrap hover:bg-content/10 hover:text-content ${
-          inset ? "h-5 rounded-full px-2" : "-mx-1 rounded-md px-1"
-        }`}
+        className="inline-flex min-w-0 max-w-[16rem] items-center gap-1.5 whitespace-nowrap hover:bg-content/10 hover:text-content -mx-1 rounded-md px-1"
         aria-label={ariaLabel}
         aria-pressed={panelOpen}
         aria-expanded={many && !panelOpen ? menuOpen : undefined}
