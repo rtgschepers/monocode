@@ -108,6 +108,31 @@ describe("LiveAgentsPreview", () => {
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("b");
   });
 
+  it("renders a single row and hides when the list is empty", () => {
+    render({
+      agents: [agent("a", "/repo/a", { done: true, activity: "Done" })],
+      groupLabels: {},
+      groupColors: {},
+      groupCustomColors: {},
+      groupMascots: {},
+    });
+    expect(container.querySelectorAll("[data-live-agent-card]")).toHaveLength(
+      1,
+    );
+    expect(container.querySelector('[aria-live="polite"]')!.textContent).toBe(
+      "1 working agent",
+    );
+
+    render({
+      agents: [],
+      groupLabels: {},
+      groupColors: {},
+      groupCustomColors: {},
+      groupMascots: {},
+    });
+    expect(container.querySelector("[data-live-agents-preview]")).toBeNull();
+  });
+
   it("keeps elapsed timers out of its live region", () => {
     render({
       agents: [agent("a", "/repo/a"), agent("b", "/repo/b")],
