@@ -5,7 +5,7 @@ description: Sync this MonoCode fork when the user asks to update the project or
 
 # Update the MonoCode fork
 
-In this repository, `origin` is the fork (`AVMG20/monocode`) and `upstream` is the original project (`hardbeat920/monocode`). Verify those remote URLs before acting. The user's request to update the project authorizes a normal commit and push to `origin/main`. Never push to `upstream`, rebase shared `main`, or force push.
+In this repository, `origin` is the fork (`rtgschepers/monocode`) and `upstream` is the project it was forked from (`AVMG20/monocode`). Verify those remote URLs before acting. The user's request to update the project authorizes a normal commit and push to `origin/main`. Never push to `upstream`, rebase shared `main`, or force push.
 
 1. Inspect the current branch and working tree. Preserve uncommitted changes; finish and commit work from the current request before syncing. Keep unrelated changes out of the update commit. If the tree cannot safely be made clean, report the obstacle instead of discarding changes.
 2. Fetch both repositories: `git fetch origin --prune --tags` and `git fetch upstream --prune --tags`.
