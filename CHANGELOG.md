@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In a Claude Project, moving between threads swaps them in place instead of sliding one full transcript over another, a project reopens on its last thread without the list flashing first, the project and its thread load together, a slow thread can no longer replace one picked after it, recently viewed threads stay loaded, and the thread list no longer reorders while threads work. A thread started in a project's second folder no longer disappears once idle, and one that finishes while open beside the project's chat is no longer flagged for review.
 - A reply's smooth text reveal could freeze mid-stream and then dump the rest at the end.
 - The prompt outline no longer floats over a viewed subagent, a background task's stop that never lands no longer leaves its button on Stopping…, and a stopped turn's step no longer spins in the step list.
+- On macOS, renewing a Claude sign-in in the background no longer cuts off a large saved credential, which signed out OAuth MCP servers (such as Everhour) stored alongside it. A failed save also no longer shows part of the credential in the error.
 - Image thumbnails for paths that don't exist no longer flash a placeholder that then collapses, and artifact pills no longer relabel themselves after every session switch.
 - Each file an agent edits no longer re-runs git several times, and chat videos are checked off the main thread.
 

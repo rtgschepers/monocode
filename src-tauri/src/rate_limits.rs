@@ -37,6 +37,9 @@ const KEYCHAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const LEGACY_KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 #[cfg(target_os = "macos")]
 const KEYCHAIN_FALLBACK_USER: &str = "claude-code-user";
+/// `security -i` mishandles lines of 4096+ bytes (masked exit status, then a split write); kept well under.
+#[cfg(target_os = "macos")]
+const SECURITY_INTERACTIVE_MAX_LINE: usize = 4000;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -878,9 +881,7 @@ pub(crate) fn delete_claude_keychain_credentials(
     })
 }
 
-/// Overwrite the credential the way Claude Code writes it: through
-/// `security -i`, so the secret never shows up in a process listing, and
-/// under the account name the item already has.
+/// Overwrite the credential the way Claude Code writes it, under the account name the item already has.
 #[cfg(target_os = "macos")]
 fn write_macos_keychain_blob(service: &str, raw: &str) -> Result<(), String> {
     use std::io::Write;
@@ -893,36 +894,40 @@ fn write_macos_keychain_blob(service: &str, raw: &str) -> Result<(), String> {
         keychain_quote(&account),
         keychain_quote(service),
     );
-    let mut child = Command::new("security")
-        .arg("-i")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("Could not run security: {error}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(command.as_bytes())
-            .map_err(|error| format!("Could not write to security: {error}"))?;
-    }
+    let mut child = if fits_security_interactive_line(&command) {
+        // Through stdin, so the secret stays out of the process listing.
+        let mut child = Command::new("security")
+            .arg("-i")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("Could not run security: {error}"))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(command.as_bytes())
+                .map_err(|error| format!("Could not write to security: {error}"))?;
+        }
+        child
+    } else {
+        // Still `security`, which the item's ACL trusts; argv is visible in `ps` while it runs, as in Claude Code's own fallback.
+        Command::new("security")
+            .args(["add-generic-password", "-U", "-a", &account, "-s", service])
+            .args(["-X", &hex])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("Could not run security: {error}"))?
+    };
     let started = Instant::now();
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
+            // Only the exit status: security's stderr can echo part of the secret.
             Ok(Some(status)) => {
-                let mut error = String::new();
-                if let Some(mut stderr) = child.stderr.take() {
-                    use std::io::Read;
-                    let _ = stderr.read_to_string(&mut error);
-                }
-                let detail = error.trim();
                 return Err(format!(
-                    "Could not save the renewed Claude sign-in to Keychain: {}",
-                    if detail.is_empty() {
-                        status.to_string()
-                    } else {
-                        detail.to_string()
-                    }
+                    "Could not save the renewed Claude sign-in to Keychain: {status}"
                 ));
             }
             Ok(None) if started.elapsed() < KEYCHAIN_TIMEOUT => {
@@ -936,6 +941,11 @@ fn write_macos_keychain_blob(service: &str, raw: &str) -> Result<(), String> {
             Err(error) => return Err(error.to_string()),
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn fits_security_interactive_line(command: &str) -> bool {
+    command.len() <= SECURITY_INTERACTIVE_MAX_LINE
 }
 
 #[cfg(target_os = "macos")]
@@ -1296,5 +1306,71 @@ mod tests {
             "Claude Code-credentials-902e721c"
         );
         assert_eq!(claude_keychain_service(None), "Claude Code-credentials");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn long_keychain_writes_skip_security_interactive() {
+        let line = |len: usize| format!("{}\n", "a".repeat(len - 1));
+        assert!(fits_security_interactive_line(&line(100)));
+        assert!(fits_security_interactive_line(&line(
+            SECURITY_INTERACTIVE_MAX_LINE - 1
+        )));
+        assert!(fits_security_interactive_line(&line(
+            SECURITY_INTERACTIVE_MAX_LINE
+        )));
+        assert!(!fits_security_interactive_line(&line(
+            SECURITY_INTERACTIVE_MAX_LINE + 1
+        )));
+        assert!(!fits_security_interactive_line(&line(4098)));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "writes a throwaway item to the login Keychain"]
+    fn keychain_blob_round_trips_short_and_long() {
+        let service = "monocode-test-keychain-blob";
+        let read_back = || {
+            let output = std::process::Command::new("security")
+                .args(["find-generic-password", "-s", service, "-w"])
+                .output()
+                .unwrap();
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .trim_end()
+                .to_string()
+        };
+        let small = json!({ "claudeAiOauth": { "accessToken": "a".repeat(200) } }).to_string();
+        let large = json!({
+            "claudeAiOauth": { "accessToken": "a".repeat(200) },
+            "mcpOAuth": { "server": { "accessToken": "m".repeat(3000) } },
+        })
+        .to_string();
+        // One write per route: hex doubles the blob.
+        assert!(small.len() * 2 < 3000 && large.len() * 2 > SECURITY_INTERACTIVE_MAX_LINE);
+        let mut results = Vec::new();
+        for blob in [&large, &small, &large] {
+            results.push(write_macos_keychain_blob(service, blob).map(|()| read_back()));
+        }
+        let delete = || {
+            security_delete(&[
+                "delete-generic-password".into(),
+                "-s".into(),
+                service.into(),
+            ])
+        };
+        let _ = delete();
+        // A second item means `-U` added one instead of updating the first.
+        let duplicate = !read_back().is_empty();
+        for _ in 0..5 {
+            if read_back().is_empty() {
+                break;
+            }
+            let _ = delete();
+        }
+        assert!(!duplicate, "a write added a second Keychain item");
+        assert_eq!(results[0].as_deref(), Ok(large.as_str()));
+        assert_eq!(results[1].as_deref(), Ok(small.as_str()));
+        assert_eq!(results[2].as_deref(), Ok(large.as_str()));
     }
 }
