@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { leaf, newTab, newTerminalFile } from "../../workspace/model/layout";
+import {
+  leaf,
+  newTab,
+  newTerminalFile,
+  newTerminalWorkspaceTab,
+} from "../../workspace/model/layout";
+import { applyTerminalMeta } from "../../terminal/model/terminalTab";
 import {
   addTerminalToDock,
   applyDockGridStyle,
@@ -9,6 +15,8 @@ import {
   dockGridStyle,
   findProjectTerminal,
   focusedDockTerminalId,
+  listWindowRunningTerminals,
+  locateDockTerminal,
   mapProjectTerminal,
   nextDockTerminalTitle,
   patchProjectTerminals,
@@ -247,5 +255,74 @@ describe("splitProjectTerminalsForMove", () => {
     const allA = splitProjectTerminalsForMove(docks, [a1, a2], [b1], sessions);
     expect(allA.moving.map((dock) => dock.projectPath)).toEqual(["/tmp/a"]);
     expect(allA.remaining.map((dock) => dock.projectPath)).toEqual(["/tmp/b"]);
+  });
+});
+
+function running(cwd: string, process: string, projectCwd?: string) {
+  return applyTerminalMeta(newTerminalFile(cwd, undefined, projectCwd), {
+    foreground: process,
+  });
+}
+
+describe("listWindowRunningTerminals", () => {
+  it("lists the current project first and names the others", () => {
+    const queue = running("/work/api", "php");
+    const vite = running("/work/shop/web", "vite", "/work/shop");
+    const jest = running("/work/app", "jest");
+    const idle = newTerminalFile("/work/app");
+    const docks = [
+      createProjectTerminal("/work/shop", vite),
+      createProjectTerminal("/work/api", queue),
+      addTerminalToDock(createProjectTerminal("/work/app", idle), jest),
+    ];
+    const list = listWindowRunningTerminals({
+      docks,
+      project: "/work/app/",
+      tabs: [],
+    });
+    expect(list.map((terminal) => terminal.id)).toEqual([
+      jest.id,
+      queue.id,
+      vite.id,
+    ]);
+    expect(list[0].project).toBeUndefined();
+    expect(list[1].project).toEqual({ path: "/work/api", name: "api" });
+    expect(list[2].project).toEqual({ path: "/work/shop", name: "shop" });
+  });
+
+  it("groups workspace tab terminals by the project they were opened in", () => {
+    const here = running("/work/app/packages/ui", "storybook", "/work/app");
+    const there = running("/work/shop", "vite");
+    const list = listWindowRunningTerminals({
+      docks: [],
+      project: "/work/app",
+      tabs: [newTerminalWorkspaceTab(there), newTerminalWorkspaceTab(here)],
+    });
+    expect(list.map((terminal) => terminal.process)).toEqual([
+      "storybook",
+      "vite",
+    ]);
+    expect(list[0].project).toBeUndefined();
+    expect(list[1].project?.name).toBe("shop");
+  });
+});
+
+describe("locateDockTerminal", () => {
+  it("flags a terminal whose dock belongs to another project", () => {
+    const vite = running("/work/shop", "vite");
+    const jest = running("/work/app", "jest");
+    const docks = [
+      createProjectTerminal("/work/shop", vite),
+      createProjectTerminal("/work/app", jest),
+    ];
+    expect(locateDockTerminal(docks, vite.id, "/work/app")).toEqual({
+      dock: docks[0],
+      elsewhere: true,
+    });
+    expect(locateDockTerminal(docks, jest.id, "/work/app/")).toEqual({
+      dock: docks[1],
+      elsewhere: false,
+    });
+    expect(locateDockTerminal(docks, "missing", "/work/app")).toBeNull();
   });
 });

@@ -263,6 +263,8 @@ import {
   createProjectTerminal,
   findProjectTerminal,
   focusedDockTerminalId,
+  listWindowRunningTerminals,
+  locateDockTerminal,
   mapProjectTerminal,
   nextDockTerminalTitle,
   patchProjectTerminals,
@@ -286,7 +288,6 @@ import {
   confirmCloseTerminals,
 } from "../features/terminal/model/terminalClose";
 import {
-  listRunningTerminals,
   newTerminalCwd,
   terminalTabLabel,
   type TerminalMetaPatch,
@@ -2330,18 +2331,16 @@ function Workspace({
       setProviderSignInRequest(null);
     }
   }, [active?.id, providerSignInRequest]);
-  const runningTerminals = useMemo(() => {
-    const files: FilePaneTab[] = [];
-    const dock = findProjectTerminal(projectTerminals, dockCwd);
-    if (dock) files.push(...dock.pane.files);
-    // A project's chat covers the workspace tabs and their terminals.
-    for (const tab of projectDockCwd === undefined ? tabs : []) {
-      for (const pane of tab.terminalPanes ?? []) {
-        files.push(...pane.files);
-      }
-    }
-    return listRunningTerminals(files);
-  }, [dockCwd, projectDockCwd, projectTerminals, tabs]);
+  const runningTerminals = useMemo(
+    () =>
+      listWindowRunningTerminals({
+        docks: projectTerminals,
+        project: dockCwd,
+        // A project's chat covers the workspace tabs and their terminals.
+        tabs: projectDockCwd === undefined ? tabs : [],
+      }),
+    [dockCwd, projectDockCwd, projectTerminals, tabs],
+  );
   const runningTerminalOpen = useMemo(() => {
     const ids = new Set(runningTerminals.map((terminal) => terminal.id));
     if (
@@ -3539,13 +3538,18 @@ function Workspace({
     [],
   );
 
+  // Set once `onSelectProject` exists, further down.
+  const selectProjectRef = useRef<(path: string) => void>(() => {});
   const onToggleRunningTerminal = useCallback(
     (fileId: string) => {
-      const dock = projectTerminalsRef.current.find((entry) =>
-        entry.pane.files.some((file) => file.id === fileId),
+      const located = locateDockTerminal(
+        projectTerminalsRef.current,
+        fileId,
+        dockCwdRef.current,
       );
-      if (dock) {
-        if (dock.open) {
+      if (located) {
+        const { dock, elsewhere } = located;
+        if (dock.open && !elsewhere && !dockCoveredRef.current) {
           setProjectTerminals((prev) =>
             mapProjectTerminal(prev, dock.projectPath, (entry) =>
               withDockOpen(entry, false),
@@ -3554,6 +3558,9 @@ function Workspace({
           setProjectTerminalFocused(false);
           return;
         }
+        // Another project's dock only shows once its project is current.
+        if (elsewhere) selectProjectRef.current(dock.projectPath);
+        else leaveCoveringMono();
         setProjectTerminals((prev) =>
           mapProjectTerminal(prev, dock.projectPath, (entry) =>
             withDockOpen(selectDockTerminal(entry, fileId), true),
@@ -3574,9 +3581,8 @@ function Workspace({
             setProjectTerminalFocused(false);
             return;
           }
-          setActiveTabId(tab.id);
-          setTabs((prev) =>
-            prev.map((entry) => {
+          const reveal = (tabs: WorkspaceTab[]) =>
+            tabs.map((entry) => {
               if (entry.id !== tab.id) return entry;
               return withSurfacePanes(
                 { ...entry, focusedId: pane.id },
@@ -3587,15 +3593,18 @@ function Workspace({
                     : item,
                 ),
               );
-            }),
-          );
+            });
+          // activateTab takes the project from the ref, so it must see this terminal active.
+          tabsRef.current = reveal(tabsRef.current);
+          setTabs(reveal);
+          activateTab(tab.id, pane.id);
           setProjectTerminalFocused(false);
           setComposerFocused(false);
           return;
         }
       }
     },
-    [focusProjectTerminal],
+    [activateTab, focusProjectTerminal, leaveCoveringMono],
   );
 
   const onNewTerminalTab = useCallback(() => {
@@ -6723,6 +6732,8 @@ function Workspace({
       workspaceNavigation.selectProject,
     ],
   );
+
+  selectProjectRef.current = onSelectProject;
 
   const pickProject = useCallback(async () => {
     // Several folders can be taken at once; each opens as its own project, and

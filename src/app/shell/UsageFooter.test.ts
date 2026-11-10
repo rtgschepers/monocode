@@ -49,6 +49,32 @@ describe("UsageFooter terminal control", () => {
     expect(markup.match(/<button/g)).toHaveLength(1);
   });
 
+  it("keeps the terminal button beside processes from other projects", () => {
+    const markup = renderToStaticMarkup(
+      createElement(UsageFooter, {
+        providers: [],
+        terminals: [
+          {
+            id: "terminal-1",
+            process: "vite",
+            cwd: "/work/shop/web",
+            label: "web",
+            project: { path: "/work/shop", name: "shop" },
+          },
+        ],
+        terminalOpen: false,
+        onToggleTerminal: vi.fn(),
+        onNewTerminal: vi.fn(),
+      }),
+    );
+
+    expect(markup).toContain(">vite</span>");
+    expect(markup).toContain('title="&quot;vite&quot; in shop/web"');
+    expect(markup).toContain('aria-label="Show vite in shop"');
+    expect(markup).toContain(">Terminal</span>");
+    expect(markup.match(/<button/g)).toHaveLength(2);
+  });
+
   it("keeps the generic terminal button when no process is running", () => {
     const markup = renderToStaticMarkup(
       createElement(UsageFooter, {
@@ -86,6 +112,39 @@ describe("UsageFooter terminal control", () => {
     expect(collapsed).toContain('aria-label="Terminal"');
     expect(open).toContain('aria-pressed="true"');
     expect(collapsed).toContain('aria-pressed="false"');
+  });
+
+  it("offers the menu over hiding the open dock when other projects run too", () => {
+    const onToggleTerminal = vi.fn();
+    root = createRoot(container);
+    act(() =>
+      root!.render(
+        createElement(UsageFooter, {
+          providers: [],
+          terminals: [
+            { id: "here", process: "jest", cwd: "/work/app", label: "app" },
+            {
+              id: "there",
+              process: "vite",
+              cwd: "/work/shop",
+              label: "shop",
+              project: { path: "/work/shop", name: "shop" },
+            },
+          ],
+          terminalOpen: true,
+          onToggleTerminal,
+        }),
+      ),
+    );
+
+    const chip = container.querySelector('button[aria-haspopup="menu"]');
+    expect(chip).not.toBeNull();
+    act(() => (chip as HTMLButtonElement).click());
+    expect(onToggleTerminal).not.toHaveBeenCalled();
+    const items = document.querySelectorAll('[role="menuitem"]');
+    expect(items).toHaveLength(2);
+    act(() => (items[1] as HTMLButtonElement).click());
+    expect(onToggleTerminal).toHaveBeenCalledWith("there");
   });
 
   it("toggles the dock instead of only showing it", () => {

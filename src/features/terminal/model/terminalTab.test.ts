@@ -6,6 +6,7 @@ import {
   listRunningTerminals,
   newTerminalCwd,
   runningTerminalChipLabel,
+  runningTerminalPlace,
   scanOscCwd,
   terminalTabLabel,
 } from "./terminalTab";
@@ -67,6 +68,43 @@ describe("listRunningTerminals", () => {
       },
     ]);
   });
+
+  it("names the project of terminals outside the current one", () => {
+    const running = applyTerminalMeta(newTerminalFile("/work/shop/web"), {
+      foreground: "vite",
+    });
+    expect(listRunningTerminals([running], "/work/shop")).toEqual([
+      {
+        id: running.id,
+        process: "vite",
+        cwd: "/work/shop/web",
+        label: "web",
+        project: { path: "/work/shop", name: "shop" },
+      },
+    ]);
+  });
+});
+
+describe("runningTerminalPlace", () => {
+  const base = { id: "a", process: "vite", cwd: "/work/shop", label: "shop" };
+  const project = { path: "/work/shop", name: "shop" };
+  const at = (cwd: string) => ({ ...base, cwd, label: "x", project });
+
+  it("shows the folder for the current project", () => {
+    expect(runningTerminalPlace(base)).toBe("shop");
+  });
+
+  it("shows another project's terminal by its path inside that project", () => {
+    expect(runningTerminalPlace(at("/work/shop"))).toBe("shop");
+    expect(runningTerminalPlace(at("/work/shop/packages/web"))).toBe(
+      "shop/packages/web",
+    );
+  });
+
+  it("shows just the project name once the shell leaves it", () => {
+    expect(runningTerminalPlace(at("/tmp"))).toBe("shop");
+    expect(runningTerminalPlace(at("/work/shopfront"))).toBe("shop");
+  });
 });
 
 describe("runningTerminalChipLabel", () => {
@@ -83,6 +121,21 @@ describe("runningTerminalChipLabel", () => {
         { id: "b", process: "vite", cwd: "/b", label: "b" },
       ]),
     ).toBe("vite ×2");
+  });
+
+  it("keeps project names out of the label", () => {
+    expect(
+      runningTerminalChipLabel([
+        { id: "a", process: "jest", cwd: "/a", label: "a" },
+        {
+          id: "b",
+          process: "vite",
+          cwd: "/b",
+          label: "b",
+          project: { path: "/b", name: "b" },
+        },
+      ]),
+    ).toBe("jest · vite");
   });
 });
 

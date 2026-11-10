@@ -13,6 +13,8 @@ import {
 import type { Session } from "../../sessions/model/session";
 import {
   applyTerminalMeta,
+  listRunningTerminals,
+  type RunningTerminal,
   type TerminalMetaPatch,
 } from "../../terminal/model/terminalTab";
 import { workspaceTabCwd } from "../../workspace/model/workspaceTabGroups";
@@ -71,7 +73,7 @@ export function clampDockSize(
 }
 
 export function findProjectTerminal(
-  docks: ProjectTerminalDock[],
+  docks: readonly ProjectTerminalDock[],
   projectPath: string,
 ): ProjectTerminalDock | undefined {
   return docks.find((dock) => sameProjectPath(dock.projectPath, projectPath));
@@ -246,6 +248,60 @@ export function projectTerminalFileIds(
     }
   }
   return ids;
+}
+
+/** Running terminals in every dock and workspace tab, the current project's first. */
+export function listWindowRunningTerminals({
+  docks,
+  project,
+  tabs,
+}: {
+  docks: readonly ProjectTerminalDock[];
+  project: string;
+  tabs: readonly WorkspaceTab[];
+}): RunningTerminal[] {
+  const here: RunningTerminal[] = [];
+  const elsewhere: RunningTerminal[] = [];
+  const current = findProjectTerminal(docks, project);
+  if (current) here.push(...listRunningTerminals(current.pane.files));
+  for (const tab of tabs) {
+    for (const pane of tab.terminalPanes ?? []) {
+      for (const file of pane.files) {
+        const owner = file.projectCwd ?? file.cwd;
+        if (sameProjectPath(owner, project)) {
+          here.push(...listRunningTerminals([file]));
+        } else {
+          elsewhere.push(
+            ...listRunningTerminals([file], normalizeProjectPath(owner)),
+          );
+        }
+      }
+    }
+  }
+  for (const dock of docks) {
+    if (dock === current) continue;
+    elsewhere.push(...listRunningTerminals(dock.pane.files, dock.projectPath));
+  }
+  // Stable sort keeps each project's terminals together in the menu.
+  elsewhere.sort(
+    (a, b) =>
+      (a.project?.name ?? "").localeCompare(b.project?.name ?? "") ||
+      (a.project?.path ?? "").localeCompare(b.project?.path ?? ""),
+  );
+  return [...here, ...elsewhere];
+}
+
+/** The dock holding a terminal, and whether showing it means switching project. */
+export function locateDockTerminal(
+  docks: readonly ProjectTerminalDock[],
+  fileId: string,
+  project: string,
+): { dock: ProjectTerminalDock; elsewhere: boolean } | null {
+  const dock = docks.find((entry) =>
+    entry.pane.files.some((file) => file.id === fileId),
+  );
+  if (!dock) return null;
+  return { dock, elsewhere: !sameProjectPath(dock.projectPath, project) };
 }
 
 export function dockGridStyle(

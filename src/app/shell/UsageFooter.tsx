@@ -31,6 +31,7 @@ import {
 } from "../../integrations/harness/core/auth";
 import {
   runningTerminalChipLabel,
+  runningTerminalPlace,
   type RunningTerminal,
 } from "../../features/terminal/model/terminalTab";
 import { MOD } from "../../platform/tauri/platform";
@@ -106,6 +107,8 @@ export function UsageFooter({
     providers.some((provider) => provider !== "opencode") ||
     (providers.includes("opencode") && opencode.status !== "unavailable");
   const showTerminals = terminals.length > 0;
+  // Processes left in other projects must not take this project's button away.
+  const runningHere = terminals.some((terminal) => !terminal.project);
   const showTerminalButton = Boolean(
     onNewTerminal || onToggleProjectTerminal,
   );
@@ -155,7 +158,8 @@ export function UsageFooter({
               open={terminalOpen}
               onToggle={onToggleTerminal}
             />
-          ) : showTerminalButton ? (
+          ) : null}
+          {showTerminalButton && !runningHere ? (
             <button
               type="button"
               className={`inline-flex h-5 shrink-0 items-center gap-1.5 whitespace-nowrap hover:bg-content/10 rounded-md px-1.5 ${
@@ -653,17 +657,24 @@ function RunningTerminalChip({
   const [menuOpen, setMenuOpen] = useState(false);
   const label = runningTerminalChipLabel(terminals);
   const many = terminals.length > 1;
+  // With other projects listed, a click picks one rather than hiding this dock.
+  const showsMenu =
+    many && (!panelOpen || terminals.some((terminal) => terminal.project));
   const title = terminals
-    .map((terminal) => `"${terminal.process}" in ${terminal.label}`)
+    .map(
+      (terminal) => `"${terminal.process}" in ${runningTerminalPlace(terminal)}`,
+    )
     .join("\n");
-  const ariaLabel =
-    terminals.length === 1
-      ? panelOpen
-        ? `Hide ${terminals[0]?.process}`
-        : `Show ${terminals[0]?.process}`
-      : panelOpen
-        ? "Hide running terminals"
-        : `${terminals.length} terminals are running processes`;
+  const only = terminals.length === 1 ? terminals[0] : undefined;
+  const ariaLabel = only
+    ? panelOpen
+      ? `Hide ${only.process}`
+      : only.project
+        ? `Show ${only.process} in ${only.project.name}`
+        : `Show ${only.process}`
+    : panelOpen && !showsMenu
+      ? "Hide running terminals"
+      : `${terminals.length} terminals are running processes`;
 
   const toggle = (fileId: string) => {
     setMenuOpen(false);
@@ -678,11 +689,11 @@ function RunningTerminalChip({
         className="inline-flex min-w-0 max-w-[16rem] items-center gap-1.5 whitespace-nowrap hover:bg-content/10 hover:text-content -mx-1 rounded-md px-1"
         aria-label={ariaLabel}
         aria-pressed={panelOpen}
-        aria-expanded={many && !panelOpen ? menuOpen : undefined}
-        aria-haspopup={many && !panelOpen ? "menu" : undefined}
+        aria-expanded={showsMenu ? menuOpen : undefined}
+        aria-haspopup={showsMenu ? "menu" : undefined}
         title={title}
         onClick={() => {
-          if (panelOpen || !many) {
+          if (!showsMenu) {
             const target = terminals[0];
             if (target) toggle(target.id);
             return;
@@ -695,7 +706,7 @@ function RunningTerminalChip({
           {label}
         </span>
       </button>
-      {menuOpen && many && !panelOpen ? (
+      {menuOpen && showsMenu ? (
         <Popover
           anchor={root}
           side="top"
@@ -718,8 +729,8 @@ function RunningTerminalChip({
               <span className="min-w-0 flex-1 truncate">
                 {terminal.process}
               </span>
-              <span className="max-w-[7rem] shrink-0 truncate text-[11px] text-content/40">
-                {terminal.label}
+              <span className="max-w-[10rem] shrink-0 truncate text-[11px] text-content/40">
+                {runningTerminalPlace(terminal)}
               </span>
             </button>
           ))}

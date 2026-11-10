@@ -1,4 +1,10 @@
 import { basename } from "../../../platform/tauri/fs";
+import {
+  displayPath,
+  isEqualOrInside,
+  pathKey,
+  projectName,
+} from "../../../shared/lib/paths";
 import type { FilePaneTab } from "../../workspace/model/layout";
 
 export type TerminalMetaPatch = {
@@ -13,6 +19,8 @@ export type RunningTerminal = {
   process: string;
   cwd: string;
   label: string;
+  /** Set only for terminals outside the current project. */
+  project?: { path: string; name: string };
 };
 
 /** Default tab label from the working directory. */
@@ -54,9 +62,10 @@ export function applyTerminalMeta(
   };
 }
 
-/** Terminals whose foreground process is not the shell. */
+/** Terminals whose foreground process is not the shell; `project` marks another one's. */
 export function listRunningTerminals(
   files: Iterable<FilePaneTab>,
+  project?: string,
 ): RunningTerminal[] {
   const running: RunningTerminal[] = [];
   for (const file of files) {
@@ -67,9 +76,24 @@ export function listRunningTerminals(
       process,
       cwd: file.cwd,
       label: defaultTerminalTitle(file.cwd),
+      ...(project
+        ? { project: { path: project, name: projectName(project) } }
+        : {}),
     });
   }
   return running;
+}
+
+/** Where a running terminal sits; another project's shows its path inside that project. */
+export function runningTerminalPlace(terminal: RunningTerminal): string {
+  const project = terminal.project;
+  if (!project) return terminal.label;
+  if (
+    pathKey(terminal.cwd) === pathKey(project.path) ||
+    !isEqualOrInside(terminal.cwd, project.path)
+  )
+    return project.name;
+  return `${project.name}/${displayPath(terminal.cwd, project.path)}`;
 }
 
 /** Status-bar chip copy: `vite`, or `vite · jest`, or `vite ×2`. */
