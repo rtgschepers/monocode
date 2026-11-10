@@ -34,7 +34,9 @@ import {
 import { displayPath } from "../../../shared/lib/paths";
 import { IS_MAC } from "../../../platform/tauri/platform";
 import { claimTrackpadMagnify } from "../../../platform/tauri/trackpadZoom";
+import { matchCustomKeybinding } from "../../settings/model/settings";
 import { resolveZoomKeybinding } from "../../settings/model/zoomKeybinding";
+import { terminalOwnsCtrlChord } from "../../terminal/model/terminalKeys";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 16;
@@ -402,6 +404,9 @@ function ImageView({
       zoomAtPointer(currentScale() * (1 + delta)),
     );
     const onKeyDown = (event: KeyboardEvent) => {
+      // Hovering the preview must not take a default Ctrl+- from a focused terminal.
+      if (!matchCustomKeybinding(event) && terminalOwnsCtrlChord(event, IS_MAC))
+        return;
       const action = resolveZoomKeybinding(event);
       if (!action) return;
       event.preventDefault();

@@ -37,3 +37,19 @@ export function isMacTerminalClearShortcut(event: TerminalKeyEvent): boolean {
     event.key.toLowerCase() === "k"
   );
 }
+
+type TerminalTargetEvent = Pick<KeyboardEvent, "ctrlKey" | "metaKey"> & {
+  target: EventTarget | null;
+};
+
+/** On macOS Cmd is the app modifier, so a Ctrl chord typed in a terminal belongs to its program. */
+export function terminalOwnsCtrlChord(
+  event: TerminalTargetEvent,
+  isMac: boolean,
+): boolean {
+  if (!isMac || !event.ctrlKey || event.metaKey) return false;
+  const target = event.target as Partial<Element> | null;
+  return typeof target?.closest === "function"
+    ? target.closest(".monocode-terminal") != null
+    : false;
+}

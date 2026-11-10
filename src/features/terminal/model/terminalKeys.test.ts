@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isMacTerminalClearShortcut,
   macTerminalShortcutData,
+  terminalOwnsCtrlChord,
 } from "./terminalKeys";
 
 function key(
@@ -77,5 +78,47 @@ describe("mac terminal clear shortcut", () => {
       isMacTerminalClearShortcut(key("k", { metaKey: true, altKey: true })),
     ).toBe(false);
     expect(isMacTerminalClearShortcut(key("j", { metaKey: true }))).toBe(false);
+  });
+});
+
+describe("terminalOwnsCtrlChord", () => {
+  const inTerminal = {
+    closest: (selector: string) =>
+      selector === ".monocode-terminal" ? {} : null,
+  } as unknown as EventTarget;
+  const elsewhere = { closest: () => null } as unknown as EventTarget;
+  const chord = (
+    target: EventTarget | null,
+    modifiers: { ctrlKey?: boolean; metaKey?: boolean } = {},
+  ) => ({ ctrlKey: false, metaKey: false, target, ...modifiers });
+
+  it("hands Ctrl chords in a terminal to the program on macOS", () => {
+    expect(
+      terminalOwnsCtrlChord(chord(inTerminal, { ctrlKey: true }), true),
+    ).toBe(true);
+  });
+
+  it("keeps Cmd chords for the app, with or without Ctrl", () => {
+    expect(
+      terminalOwnsCtrlChord(chord(inTerminal, { metaKey: true }), true),
+    ).toBe(false);
+    expect(
+      terminalOwnsCtrlChord(
+        chord(inTerminal, { ctrlKey: true, metaKey: true }),
+        true,
+      ),
+    ).toBe(false);
+  });
+
+  it("leaves Ctrl to the app off macOS and outside a terminal", () => {
+    expect(
+      terminalOwnsCtrlChord(chord(inTerminal, { ctrlKey: true }), false),
+    ).toBe(false);
+    expect(
+      terminalOwnsCtrlChord(chord(elsewhere, { ctrlKey: true }), true),
+    ).toBe(false);
+    expect(terminalOwnsCtrlChord(chord(null, { ctrlKey: true }), true)).toBe(
+      false,
+    );
   });
 });

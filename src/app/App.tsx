@@ -292,6 +292,7 @@ import {
   terminalTabLabel,
   type TerminalMetaPatch,
 } from "../features/terminal/model/terminalTab";
+import { terminalOwnsCtrlChord } from "../features/terminal/model/terminalKeys";
 import {
   applyHarnessEvent,
   applyHarnessEvents,
@@ -12974,6 +12975,8 @@ function Workspace({
       // this keeps the whole handler consistent for whatever is added next.
       if (e.isComposing) return;
       const customCommand = matchCustomKeybinding(e);
+      // Default Ctrl chords give way to the terminal program; deliberate rebinds still fire.
+      if (!customCommand && terminalOwnsCtrlChord(e, IS_MAC)) return;
       const pressed = (command: string, defaultMatch: boolean) =>
         keybindingPressed(command, e, defaultMatch);
       // A rebound zoom chord may be Option-only, so it is resolved outside the
@@ -13041,13 +13044,12 @@ function Workspace({
             return;
           }
         }
+        // Off macOS Ctrl is the app modifier, but Ctrl+[ and Ctrl+] still belong to the terminal.
         if (
           target?.closest(".monocode-terminal") &&
           e.ctrlKey &&
           !e.metaKey &&
-          (cmd === "back" ||
-            cmd === "forward" ||
-            /Mac|iPhone|iPad/.test(navigator.platform))
+          (cmd === "back" || cmd === "forward")
         ) {
           return;
         }
@@ -13145,6 +13147,7 @@ function Workspace({
       }
       const shortcut = resolveAppShortcut(e);
       if (shortcut) {
+        // Off macOS Ctrl+K stays the shell's kill-line.
         if (
           shortcut === "App: Search" &&
           e.target instanceof Element &&

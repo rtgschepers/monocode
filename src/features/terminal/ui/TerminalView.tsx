@@ -227,6 +227,8 @@ export function TerminalView({ id, cwd, active, onMetaChange }: Props) {
         return false;
       }
 
+      // Ctrl is not the Mac copy/paste modifier, so Ctrl+C and Ctrl+V reach the program.
+      if (IS_MAC && event.ctrlKey && !event.metaKey) return true;
       const mod = event.metaKey || event.ctrlKey;
       if (!mod || event.altKey) return true;
       const key = event.key.toLowerCase();
