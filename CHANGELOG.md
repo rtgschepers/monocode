@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A reply's smooth text reveal could freeze mid-stream and then dump the rest at the end.
 - The prompt outline no longer floats over a viewed subagent, a background task's stop that never lands no longer leaves its button on Stopping…, and a stopped turn's step no longer spins in the step list.
 - On macOS, renewing a Claude sign-in in the background no longer cuts off a large saved credential, which signed out OAuth MCP servers (such as Everhour) stored alongside it. A failed save also no longer shows part of the credential in the error.
+- A terminal left running in another project can be found again: the running-process chip at the right of the footer lists terminals from every project in the window (hover for where each runs), and picking one switches to its project and opens it. A terminal that `cd`s into a subfolder no longer makes that folder the current project, which hid the project's terminals.
+- On macOS, Ctrl shortcuts typed in a terminal go to the program instead of MonoCode, so Ctrl+O saves in pico instead of opening a project, and Ctrl+C and Ctrl+V reach the program. Ctrl shortcuts you have set yourself still work.
 - Image thumbnails for paths that don't exist no longer flash a placeholder that then collapses, and artifact pills no longer relabel themselves after every session switch.
 - Each file an agent edits no longer re-runs git several times, and chat videos are checked off the main thread.
 
