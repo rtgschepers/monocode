@@ -59,8 +59,10 @@ export type FilePaneTab = {
   id: string;
   path: string;
   cwd: string;
-  /** Owning project when cwd points at one of its linked worktrees. */
+  /** Owning project when cwd is one of its worktrees; always set on terminals. */
   projectCwd?: string;
+  /** Folder a terminal was opened in, since its `cwd` follows `cd`. */
+  openedCwd?: string;
   plan?: PlanTabSource;
   releaseNotes?: ReleaseNotesTabSource;
   review?: boolean;
@@ -316,9 +318,19 @@ export function newTerminalFile(
     id: crypto.randomUUID(),
     path: title ?? defaultTerminalTitle(cwd),
     cwd,
-    ...(projectCwd && projectCwd !== cwd ? { projectCwd } : {}),
+    // Kept even when equal to cwd: the live cwd follows `cd`, the project must not.
+    projectCwd: projectCwd || cwd,
+    openedCwd: cwd,
     terminal: true,
   };
+}
+
+/** Linked worktree a tab works in; a terminal's is where it opened, not where it `cd`d. */
+export function fileWorktreeCwd(file: FilePaneTab): string | undefined {
+  if (!file.projectCwd) return undefined;
+  if (!file.terminal) return file.cwd;
+  const opened = file.openedCwd ?? file.cwd;
+  return pathKey(opened) === pathKey(file.projectCwd) ? undefined : opened;
 }
 
 export function newTerminalWorkspaceTab(file: FilePaneTab): WorkspaceTab {

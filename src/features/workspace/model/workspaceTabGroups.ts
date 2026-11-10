@@ -1,5 +1,6 @@
 import {
   closeLeaf,
+  fileWorktreeCwd,
   focusedFileTab,
   firstLeafId,
   leaf,
@@ -45,7 +46,8 @@ export function workspaceTabWorktree(
     const session = sessions.find((entry) => entry.id === id);
     if (session?.cwd && session.cwd !== "~") return sessionWorkCwd(session);
   }
-  const cwd = focusedFileTab(tab)?.cwd;
+  const file = focusedFileTab(tab);
+  const cwd = file && (fileWorktreeCwd(file) ?? file.projectCwd ?? file.cwd);
   return cwd && cwd !== "~" ? cwd : null;
 }
 

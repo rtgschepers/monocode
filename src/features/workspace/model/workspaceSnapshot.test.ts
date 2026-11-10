@@ -709,6 +709,74 @@ describe("hydrateWorkspaceSnapshot", () => {
     ).toBeUndefined();
   });
 
+  it("gives dock terminals saved without a project the dock's folder", () => {
+    const {
+      projectCwd: _project,
+      openedCwd: _opened,
+      ...term
+    } = { ...newTerminalFile("/tmp/a"), cwd: "/tmp/a/app" };
+    const snapshot = collectWorkspaceSnapshot(
+      [{ ...newTab("s1"), id: "t1" }],
+      [],
+      "t1",
+      "/tmp/a",
+      new Map(),
+      [createProjectTerminal("/tmp/a", term)],
+    );
+    const workspace = hydrateWorkspaceSnapshot(snapshot, new Map());
+    expect(workspace?.projectTerminals?.[0]?.pane.files[0]).toMatchObject({
+      cwd: "/tmp/a/app",
+      projectCwd: "/tmp/a",
+    });
+  });
+
+  it("keeps restored terminal-only tabs in their project after a cd", () => {
+    const oldTerminal = (id: string, cwd: string, projectCwd?: string) => ({
+      id,
+      path: "zsh",
+      cwd,
+      terminal: true,
+      ...(projectCwd ? { projectCwd } : {}),
+    });
+    const terminalTab = (id: string, file: object, layoutId = `${id}-pane`) => ({
+      id,
+      layout: { type: "leaf", id: layoutId },
+      focusedId: `${id}-pane`,
+      editorPanes: [],
+      terminalPanes: [
+        { id: `${id}-pane`, files: [file], activeFileId: (file as { id: string }).id },
+      ],
+    });
+    const parsed = parseWorkspaceSnapshot({
+      tabs: [
+        terminalTab("t1", oldTerminal("f1", "/work/app/src")),
+        terminalTab("t2", oldTerminal("f2", "/tmp")),
+        terminalTab("t3", oldTerminal("f3", "/work/shop/web"), "s1"),
+        terminalTab("t4", oldTerminal("f4", "/work/app-worktrees/x", "/work/app")),
+      ],
+      sessions: [
+        { id: "s1", cwd: "/work/shop", harness: "cursor", runtimeMode: "supervised" },
+      ],
+      activeTabId: "t1",
+      projectCwd: "/work/app",
+    });
+    const files = parsed?.tabs.map((tab) => tab.terminalPanes?.[0]?.files[0]);
+    expect(files?.[0]).toMatchObject({
+      cwd: "/work/app/src",
+      projectCwd: "/work/app",
+      openedCwd: "/work/app",
+    });
+    expect(files?.[1]).toMatchObject({ projectCwd: "/tmp", openedCwd: "/tmp" });
+    expect(files?.[2]).toMatchObject({
+      projectCwd: "/work/shop",
+      openedCwd: "/work/shop",
+    });
+    expect(files?.[3]).toMatchObject({
+      projectCwd: "/work/app",
+      openedCwd: "/work/app-worktrees/x",
+    });
+  });
+
   it("restores the last dock side", () => {
     const term = newTerminalFile("/tmp/a", "zsh");
     const snapshot = collectWorkspaceSnapshot(

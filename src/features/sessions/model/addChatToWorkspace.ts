@@ -1,6 +1,7 @@
 import { composerSeedForAddToChat, type AddToChatMode } from "./quoteDraft";
 import { newDefaultSession, newSessionLike, type Session } from "./session";
 import {
+  fileWorktreeCwd,
   focusedFileTab,
   leafIds,
   newTab,
@@ -96,9 +97,10 @@ export function applyAddToChatRequest({
     fallbackCwd ??
     projectCwd;
   const file = focusedFileTab(tab);
+  const worktreeCwd = file ? fileWorktreeCwd(file) : undefined;
   const session = createdSession ?? {
     ...newDefaultSession(cwd, defaultRuntimeMode),
-    ...(file?.projectCwd ? { worktreeCwd: file.cwd } : {}),
+    ...(worktreeCwd ? { worktreeCwd } : {}),
     composerSeed,
   };
 

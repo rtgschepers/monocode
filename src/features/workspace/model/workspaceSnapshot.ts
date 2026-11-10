@@ -24,7 +24,7 @@ import {
   type ProjectTerminalDock,
 } from "../../projects/model/projectTerminal";
 import { normalizeProjectPath } from "../../projects/model/recents";
-import { pathKey } from "../../../shared/lib/paths";
+import { isEqualOrInside, pathKey } from "../../../shared/lib/paths";
 import { parseRemotePath, remotePath } from "../../connections/model/remoteProjects";
 import {
   reconcileProjectReturn,
@@ -214,22 +214,25 @@ export function parseWorkspaceSnapshot(raw: unknown): WorkspaceSnapshot | null {
   if (!Array.isArray(value.tabs) || typeof value.activeTabId !== "string") {
     return null;
   }
-  const tabs = value.tabs
+  const sanitizedTabs = value.tabs
     .map(sanitizeTab)
     .filter((tab): tab is WorkspaceTab => tab != null);
-  if (tabs.length === 0) return null;
+  if (sanitizedTabs.length === 0) return null;
   const sessions = Array.isArray(value.sessions)
     ? value.sessions
         .map(sanitizeStub)
         .filter((stub): stub is WorkspaceSessionStub => stub != null)
     : [];
-  const activeTabId = tabs.some((tab) => tab.id === value.activeTabId)
+  const activeTabId = sanitizedTabs.some((tab) => tab.id === value.activeTabId)
     ? value.activeTabId
-    : tabs[0].id;
+    : sanitizedTabs[0].id;
   const projectCwd =
     typeof value.projectCwd === "string" && value.projectCwd.trim()
       ? value.projectCwd.trim()
       : "~";
+  const tabs = sanitizedTabs.map((tab) =>
+    withTabTerminalProjects(tab, sessions, projectCwd),
+  );
   const projectTerminals = Array.isArray(value.projectTerminals)
     ? value.projectTerminals
         .map(sanitizeProjectTerminal)
@@ -624,6 +627,9 @@ function sanitizeFile(raw: unknown): FilePaneTab | null {
     ...(typeof value.projectCwd === "string" && value.projectCwd
       ? { projectCwd: value.projectCwd }
       : {}),
+    ...(typeof value.openedCwd === "string" && value.openedCwd
+      ? { openedCwd: value.openedCwd }
+      : {}),
     ...(plan ? { plan } : {}),
     ...(releaseNotes ? { releaseNotes } : {}),
     ...(commit ? { commit } : {}),
@@ -698,17 +704,54 @@ function sanitizeProjectTerminal(raw: unknown): ProjectTerminalDock | null {
   if (!isDockSide(value.side)) return null;
   const pane = sanitizePane(value.pane);
   if (!pane) return null;
-  const files = pane.files.filter(isTerminalTab);
+  const projectPath = normalizeProjectPath(value.projectPath);
+  const files = pane.files
+    .filter(isTerminalTab)
+    .map((file) => withTerminalProject(file, projectPath));
   if (files.length === 0) return null;
   const activeFileId = files.some((file) => file.id === pane.activeFileId)
     ? pane.activeFileId
     : files[0].id;
   return {
-    projectPath: normalizeProjectPath(value.projectPath),
+    projectPath,
     pane: { ...pane, files, activeFileId },
     side: value.side,
     size: clampDockSize(value.side, Number(value.size)),
     open: value.open !== false,
+  };
+}
+
+/** Terminals saved before they kept their project get one, so a later `cd` cannot move it. */
+function withTerminalProject(file: FilePaneTab, project: string): FilePaneTab {
+  if (!file.terminal || file.openedCwd) return file;
+  // Back then `projectCwd` was only stored for a terminal opened in a worktree.
+  if (file.projectCwd) return { ...file, openedCwd: file.cwd };
+  return { ...file, projectCwd: project, openedCwd: project };
+}
+
+/** A tab's terminals belong to its chat's project, else to the saved one they sit in. */
+function withTabTerminalProjects(
+  tab: WorkspaceTab,
+  sessions: readonly WorkspaceSessionStub[],
+  savedProject: string,
+): WorkspaceTab {
+  const panes = tab.terminalPanes ?? [];
+  if (!panes.some((pane) => pane.files.some((file) => !file.openedCwd)))
+    return tab;
+  const sessionCwd = leafIds(tab.layout)
+    .map((id) => sessions.find((stub) => stub.id === id)?.cwd)
+    .find((cwd) => !!cwd && cwd !== "~");
+  const projectOf = (file: FilePaneTab) =>
+    sessionCwd ??
+    (savedProject !== "~" && isEqualOrInside(file.cwd, savedProject)
+      ? savedProject
+      : file.cwd);
+  return {
+    ...tab,
+    terminalPanes: panes.map((pane) => ({
+      ...pane,
+      files: pane.files.map((file) => withTerminalProject(file, projectOf(file))),
+    })),
   };
 }
 

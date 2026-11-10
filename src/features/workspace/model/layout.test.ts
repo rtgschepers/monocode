@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { applyTerminalMeta } from "../../terminal/model/terminalTab";
 import {
   closeLeaf,
   closeSurfacePanes,
   editorTabKey,
+  fileWorktreeCwd,
   isChangesTab,
   isCommitTab,
   isFilesystemTab,
@@ -422,6 +424,57 @@ describe("newReleaseNotesWorkspaceTab", () => {
     const second = newReleaseNotesWorkspaceTab({ version: "0.1.23" })
       .editorPanes[0]!.files[0]!;
     expect(editorTabKey(first)).toBe(editorTabKey(second));
+  });
+});
+
+describe("newTerminalFile", () => {
+  it("keeps the project folder even when it is the terminal's cwd", () => {
+    expect(newTerminalFile("/repo")).toMatchObject({
+      projectCwd: "/repo",
+      openedCwd: "/repo",
+    });
+    expect(newTerminalFile("/repo", "dev", "/repo").projectCwd).toBe("/repo");
+    expect(newTerminalFile("/repo/app", "dev", "/repo").projectCwd).toBe(
+      "/repo",
+    );
+  });
+
+  it("keeps the project folder after the shell changes directory", () => {
+    const file = applyTerminalMeta(newTerminalFile("/repo"), {
+      cwd: "/repo/app",
+    });
+    expect(file).toMatchObject({ cwd: "/repo/app", projectCwd: "/repo" });
+  });
+});
+
+describe("fileWorktreeCwd", () => {
+  it("treats a terminal's subfolder as the main checkout", () => {
+    expect(fileWorktreeCwd(newTerminalFile("/repo"))).toBeUndefined();
+    expect(
+      fileWorktreeCwd({ ...newTerminalFile("/repo"), cwd: "/repo/app" }),
+    ).toBeUndefined();
+  });
+
+  it("keeps a terminal opened in a worktree inside the repo in that worktree", () => {
+    const nested = newTerminalFile("/repo/.claude/worktrees/x", undefined, "/repo");
+    expect(fileWorktreeCwd(nested)).toBe("/repo/.claude/worktrees/x");
+    expect(
+      fileWorktreeCwd({ ...nested, cwd: "/repo/.claude/worktrees/x/src" }),
+    ).toBe("/repo/.claude/worktrees/x");
+  });
+
+  it("returns a linked worktree for terminals and files", () => {
+    expect(
+      fileWorktreeCwd(
+        newTerminalFile("/repo-worktrees/feature", undefined, "/repo"),
+      ),
+    ).toBe("/repo-worktrees/feature");
+    expect(
+      fileWorktreeCwd(
+        newFileTab("a.ts", "/repo-worktrees/feature", false, undefined, "/repo"),
+      ),
+    ).toBe("/repo-worktrees/feature");
+    expect(fileWorktreeCwd(newFileTab("a.ts", "/repo"))).toBeUndefined();
   });
 });
 
